@@ -1,0 +1,573 @@
+# Data Whisperer API - Code Documentation
+# ======================================
+
+## Overview
+Dokumentasi ini menjelaskan struktur kode, fungsi, dan implementasi detail dari API Data Whisperer.
+Dokumentasi ini mencakup analisis mendalam dari setiap file dan komponen kode.
+
+---
+
+# 1. MAIN APPLICATION FILE
+## File: `backend/api/main.py`
+
+### Purpose
+File utama yang menginisialisasi FastAPI application dan mengatur routing untuk semua endpoint.
+
+### Code Structure
+```python
+from fastapi import FastAPI
+from backend.api.router import eda_router, agent_router, ml_router
+
+app = FastAPI(
+    title="Data Whisperer API",
+    description="API untuk analisis data dan interaksi dengan AI Agent."
+)
+app.include_router(eda_router.router)
+app.include_router(agent_router.router)
+app.include_router(ml_router.router)
+
+@app.get("/")
+def read_root():
+    return {"status": "ok", "message": "Selamat datang di server Data Whisperer!"}
+```
+
+### Functions
+
+#### `read_root()`
+- **Purpose**: Health check endpoint untuk memverifikasi server berjalan
+- **Method**: GET
+- **Path**: `/`
+- **Returns**: JSON response dengan status server
+- **Response Format**:
+  ```json
+  {
+    "status": "ok",
+    "message": "Selamat datang di server Data Whisperer!"
+  }
+  ```
+
+### Router Integration
+- **EDA Router**: `/api/eda` - Exploratory Data Analysis endpoints
+- **Agent Router**: `/api/agent` - AI Agent interaction endpoints  
+- **ML Router**: `/api/ml` - Machine Learning pipeline endpoints
+
+### Dependencies
+- `fastapi`: Web framework utama
+- `backend.api.router`: Custom router modules
+
+---
+
+# 2. AGENT ROUTER
+## File: `backend/api/router/agent_router.py`
+
+### Purpose
+Menangani interaksi dengan AI Agent untuk analisis data menggunakan natural language processing.
+
+### Imports
+```python
+import io, json, base64, os
+from fastapi import APIRouter, HTTPException, Body, UploadFile, File, Form, Header
+from fastapi.responses import StreamingResponse, Response, JSONResponse
+from backend.services.eda import main as eda_main
+from backend.services.agent.main import run_agent_flow
+from typing import Optional, List, Dict
+import uuid
+```
+
+### Router Configuration
+```python
+router = APIRouter(
+    prefix="/api/agent",
+    tags=["Agent"]
+)
+```
+
+### Functions
+
+#### `execute_agent_action(file, prompt, x_session_id)`
+- **Purpose**: Menjalankan AI Agent untuk menganalisis data dan menjawab pertanyaan
+- **Method**: POST
+- **Path**: `/api/agent/execute`
+- **Parameters**:
+  - `file` (Optional[UploadFile]): File CSV atau PDF untuk dianalisis
+  - `prompt` (str): Pertanyaan atau instruksi dalam bahasa natural
+  - `x_session_id` (Optional[str]): Session ID untuk tracking interaksi
+- **Process Flow**:
+  1. Validasi session ID (buat baru jika tidak ada)
+  2. Validasi format file (CSV/PDF)
+  3. Simpan file ke direktori session
+  4. Jalankan agent flow dengan prompt dan file
+  5. Return response dengan session ID
+- **Error Handling**:
+  - `400`: Format file tidak valid
+  - `500`: Error dalam pemrosesan agent
+- **Response**: JSON dengan hasil analisis agent
+
+#### `create_custom_visualization(prompt, file, x_session_id)`
+- **Purpose**: Membuat visualisasi kustom berdasarkan prompt natural language
+- **Method**: POST
+- **Path**: `/api/agent/custom-visualize`
+- **Parameters**:
+  - `prompt` (str): Deskripsi visualisasi yang diinginkan
+  - `file` (Optional[UploadFile]): File CSV untuk visualisasi
+  - `x_session_id` (Optional[str]): Session ID
+- **Process Flow**:
+  1. Validasi session ID
+  2. Validasi file CSV
+  3. Generate plot plan dari prompt
+  4. Create custom plot
+  5. Generate interpretation
+  6. Return base64 encoded image
+- **Error Handling**:
+  - `400`: File CSV dibutuhkan atau format tidak valid
+  - `500`: Error dalam pembuatan plot
+- **Response**: JSON dengan plan, summary, dan base64 image
+
+### Session Management
+- **Session ID Generation**: UUID4 untuk tracking interaksi
+- **File Storage**: `user_uploads/{session_id}/` directory
+- **File Cleanup**: Otomatis hapus file jika error
+
+### Error Handling Strategy
+- Validasi format file sebelum processing
+- Cleanup file jika terjadi error
+- Detailed error messages dalam bahasa Indonesia
+- Proper HTTP status codes
+
+---
+
+# 3. EDA ROUTER
+## File: `backend/api/router/eda_router.py`
+
+### Purpose
+Menangani semua endpoint untuk Exploratory Data Analysis (EDA).
+
+### Imports
+```python
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form
+from fastapi.responses import StreamingResponse
+import io
+from backend.services.eda import main as eda_main
+from backend.services.agent import main as agent_main
+```
+
+### Router Configuration
+```python
+router = APIRouter(
+    prefix="/api/eda", 
+    tags=["EDA"] 
+)
+```
+
+### Functions
+
+#### `describe_data(file)`
+- **Purpose**: Mendapatkan statistik deskriptif dari dataset
+- **Method**: POST
+- **Path**: `/api/eda/describe`
+- **Parameters**: `file` (UploadFile): File CSV
+- **Process**: Validasi format → Read file → Generate description
+- **Returns**: JSON dengan filename dan statistics
+- **Error Handling**: 400 (invalid format), 500 (processing error)
+
+#### `get_correlation_heatmap(file)`
+- **Purpose**: Membuat heatmap korelasi antar variabel numerik
+- **Method**: POST
+- **Path**: `/api/eda/correlation-heatmap`
+- **Parameters**: `file` (UploadFile): File CSV
+- **Returns**: PNG image stream
+- **Error Handling**: 400 (invalid format), 500 (generation error)
+
+#### `get_histogram(file, column_name)`
+- **Purpose**: Membuat histogram untuk kolom numerik tertentu
+- **Method**: POST
+- **Path**: `/api/eda/histogram`
+- **Parameters**: 
+  - `file` (UploadFile): File CSV
+  - `column_name` (str): Nama kolom untuk histogram
+- **Returns**: PNG image stream
+- **Error Handling**: 
+  - 400: Format tidak valid atau kolom bukan numerik
+  - 404: Kolom tidak ditemukan
+  - 500: Generation error
+
+#### `get_missing_value_heatmap(file)`
+- **Purpose**: Heatmap untuk menunjukkan missing values
+- **Method**: POST
+- **Path**: `/api/eda/missing-value-heatmap`
+- **Parameters**: `file` (UploadFile): File CSV
+- **Returns**: PNG image stream
+- **Error Handling**: 400 (invalid format), 500 (generation error)
+
+#### `find_outliers(file, column_name)`
+- **Purpose**: Mendeteksi outliers dalam kolom numerik
+- **Method**: POST
+- **Path**: `/api/eda/outliers`
+- **Parameters**:
+  - `file` (UploadFile): File CSV
+  - `column_name` (str): Nama kolom untuk deteksi
+- **Returns**: JSON dengan outlier information
+- **Error Handling**:
+  - 400: Format tidak valid atau kolom bukan numerik
+  - 404: Kolom tidak ditemukan
+  - 500: Detection error
+
+#### `calculate_skewness(file)`
+- **Purpose**: Menghitung skewness untuk semua kolom numerik
+- **Method**: POST
+- **Path**: `/api/eda/skewness`
+- **Parameters**: `file` (UploadFile): File CSV
+- **Returns**: JSON dengan skewness data
+- **Error Handling**: 400 (invalid format), 500 (calculation error)
+
+#### `get_categorical_analysis(file, column_name)`
+- **Purpose**: Menganalisis kolom kategorikal
+- **Method**: POST
+- **Path**: `/api/eda/categorical-insights`
+- **Parameters**:
+  - `file` (UploadFile): File CSV
+  - `column_name` (str): Nama kolom kategorikal
+- **Returns**: JSON dengan categorical insights
+- **Error Handling**:
+  - 400: Format tidak valid atau kolom terlalu numerik
+  - 404: Kolom tidak ditemukan
+  - 500: Analysis error
+
+#### `get_target_analysis(file, target_column)`
+- **Purpose**: Menganalisis variabel target untuk ML
+- **Method**: POST
+- **Path**: `/api/eda/target-analysis`
+- **Parameters**:
+  - `file` (UploadFile): File CSV
+  - `target_column` (str): Nama kolom target
+- **Returns**: JSON dengan target analysis
+- **Error Handling**:
+  - 400: Format tidak valid
+  - 404: Kolom target tidak ditemukan
+  - 500: Analysis error
+
+#### `get_target_feature_relationship_plot(file, target_column, feature_column)`
+- **Purpose**: Visualisasi hubungan target-feature
+- **Method**: POST
+- **Path**: `/api/eda/target-feature-plot`
+- **Parameters**:
+  - `file` (UploadFile): File CSV
+  - `target_column` (str): Nama kolom target
+  - `feature_column` (str): Nama kolom feature
+- **Returns**: PNG image stream
+- **Error Handling**:
+  - 400: Format tidak valid
+  - 404: Kolom tidak ditemukan
+  - 500: Visualization error
+
+#### `get_full_data_profile(file)`
+- **Purpose**: Profil data lengkap dengan semua analisis
+- **Method**: POST
+- **Path**: `/api/eda/full-profile`
+- **Parameters**: `file` (UploadFile): File CSV
+- **Returns**: JSON dengan comprehensive data profile
+- **Error Handling**: 400 (invalid format), 500 (profile generation error)
+
+#### `get_vif_analysis(file)`
+- **Purpose**: Menghitung Variance Inflation Factor
+- **Method**: POST
+- **Path**: `/api/eda/vif`
+- **Parameters**: `file` (UploadFile): File CSV
+- **Returns**: JSON dengan VIF results
+- **Error Handling**: 400 (invalid format), 500 (VIF calculation error)
+
+### Common Patterns
+- **File Validation**: Semua endpoint memvalidasi format CSV
+- **Error Handling**: Konsisten dengan HTTP status codes
+- **Response Types**: Mix antara JSON responses dan image streams
+- **Service Integration**: Menggunakan `eda_main` service untuk processing
+
+---
+
+# 4. MACHINE LEARNING ROUTER
+## File: `backend/api/router/ml_router.py`
+
+### Purpose
+Menangani semua endpoint untuk Machine Learning pipeline dan model management.
+
+### Imports
+```python
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi.responses import JSONResponse
+import pandas as pd
+from backend.services.ml import selector, preprocessor, trainer, evaluator
+from backend.utils.read_csv import _read_csv_with_fallback
+```
+
+### Router Configuration
+```python
+router = APIRouter(
+    prefix="/api/ml",
+    tags=["Machine Learning"]
+)
+```
+
+### Global State Management
+```python
+model_artifacts = {
+    "model": None,
+    "preprocessor": None,
+    "problem_type": None
+}
+```
+**Purpose**: Menyimpan model dan preprocessor yang sudah dilatih untuk digunakan dalam prediksi.
+
+### Functions
+
+#### `run_full_ml_pipeline(file, target_column)`
+- **Purpose**: Menjalankan pipeline ML lengkap dari preprocessing hingga evaluation
+- **Method**: POST
+- **Path**: `/api/ml/run-pipeline`
+- **Parameters**:
+  - `file` (UploadFile): File CSV dengan data training
+  - `target_column` (str): Nama kolom target
+- **Process Flow**:
+  1. Validasi format file CSV
+  2. Read dan preprocess data
+  3. Detect problem type (classification/regression)
+  4. Preprocess features dan target
+  5. Train model
+  6. Evaluate model
+  7. Store model artifacts
+- **Returns**: JSON dengan metrics dan model info
+- **Error Handling**:
+  - 400: Format file tidak valid
+  - 404: Kolom target tidak ditemukan
+  - 500: Pipeline execution error
+
+#### `make_prediction(new_data)`
+- **Purpose**: Membuat prediksi menggunakan model yang sudah dilatih
+- **Method**: POST
+- **Path**: `/api/ml/predict`
+- **Parameters**: `new_data` (dict): Data untuk prediksi
+- **Process**: 
+  1. Check if model exists
+  2. Preprocess new data
+  3. Make prediction
+  4. Return results
+- **Returns**: JSON dengan prediction dan confidence
+- **Error Handling**:
+  - 400: Model belum dilatih atau data tidak lengkap
+  - 500: Prediction error
+
+#### `run_tuned_ml_pipeline(file, target_column)`
+- **Purpose**: Pipeline ML dengan hyperparameter tuning
+- **Method**: POST
+- **Path**: `/api/ml/run-tuned-pipeline`
+- **Parameters**:
+  - `file` (UploadFile): File CSV dengan data training
+  - `target_column` (str): Nama kolom target
+- **Process Flow**:
+  1. Same as regular pipeline
+  2. Perform hyperparameter tuning
+  3. Train with best parameters
+  4. Evaluate and store artifacts
+- **Returns**: JSON dengan best parameters dan metrics
+- **Error Handling**: Same as regular pipeline
+
+#### `get_model_feature_importance()`
+- **Purpose**: Mendapatkan feature importance dari model
+- **Method**: POST
+- **Path**: `/api/ml/feature-importance`
+- **Process**:
+  1. Check if model exists
+  2. Extract feature importance
+  3. Return top 10 features
+- **Returns**: JSON dengan feature importance
+- **Error Handling**:
+  - 400: Model belum dilatih
+  - 500: Feature extraction error
+
+#### `download_model_artifacts(model_name, type)`
+- **Purpose**: Download model artifacts (model atau preprocessor)
+- **Method**: GET
+- **Path**: `/api/ml/download/{model_name}`
+- **Parameters**:
+  - `model_name` (str): Nama model
+  - `type` (str): "model" atau "preprocessor"
+- **Process**:
+  1. Validate type parameter
+  2. Construct file path
+  3. Check file existence
+  4. Return file download
+- **Returns**: File download
+- **Error Handling**:
+  - 400: Tipe tidak valid
+  - 404: File tidak ditemukan
+
+### ML Pipeline Architecture
+1. **Data Loading**: `_read_csv_with_fallback()` untuk robust CSV reading
+2. **Problem Detection**: `selector.detect_problem_type()` untuk classification/regression
+3. **Preprocessing**: `preprocessor.preprocess_data()` untuk feature engineering
+4. **Training**: `trainer.train_model()` untuk model training
+5. **Evaluation**: `evaluator.evaluate_model()` untuk performance metrics
+6. **Prediction**: `predictor.predict_new_data()` untuk inference
+
+### State Management
+- **Model Persistence**: Model disimpan dalam global `model_artifacts`
+- **Session Independence**: Model tersedia untuk semua requests
+- **Artifact Storage**: Model disimpan di `saved_models/` directory
+
+### Error Handling Strategy
+- **Validation**: File format dan column existence
+- **State Checking**: Model availability untuk prediction
+- **Exception Handling**: Comprehensive error messages
+- **Resource Management**: Proper cleanup on errors
+
+---
+
+# 5. CODE ARCHITECTURE ANALYSIS
+
+## Design Patterns
+
+### 1. Router Pattern
+- **Separation of Concerns**: Setiap router menangani domain spesifik
+- **Modularity**: Easy to maintain dan extend
+- **Consistency**: Standardized error handling dan response format
+
+### 2. Service Layer Pattern
+- **Business Logic Separation**: Router hanya handle HTTP, service handle logic
+- **Reusability**: Services dapat digunakan di multiple routers
+- **Testability**: Services dapat di-test independently
+
+### 3. State Management
+- **Global State**: `model_artifacts` untuk ML models
+- **Session State**: Session ID untuk user tracking
+- **File State**: File uploads dengan session-based storage
+
+## Error Handling Strategy
+
+### Consistent Error Responses
+```python
+# Format yang konsisten untuk semua endpoints
+raise HTTPException(
+    status_code=400, 
+    detail="Pesan error dalam bahasa Indonesia"
+)
+```
+
+### Error Categories
+1. **Validation Errors** (400): Input validation failures
+2. **Not Found Errors** (404): Resource tidak ditemukan
+3. **Processing Errors** (500): Internal processing failures
+
+### Error Recovery
+- **File Cleanup**: Otomatis hapus file jika error
+- **State Reset**: Proper cleanup untuk failed operations
+- **User Feedback**: Clear error messages dalam bahasa Indonesia
+
+## Performance Considerations
+
+### File Handling
+- **Streaming Responses**: Untuk image outputs
+- **Memory Management**: Proper file cleanup
+- **Session-based Storage**: Isolated file storage per session
+
+### ML Pipeline
+- **Model Caching**: Global model storage
+- **Preprocessing Caching**: Reuse preprocessor objects
+- **Async Operations**: Non-blocking file operations
+
+## Security Considerations
+
+### File Upload Security
+- **Format Validation**: Hanya CSV dan PDF yang diizinkan
+- **Path Sanitization**: Session-based file storage
+- **Size Limits**: Implicit file size management
+
+### Session Management
+- **UUID Generation**: Secure session ID generation
+- **Session Isolation**: Isolated file storage per session
+- **Cleanup**: Automatic file cleanup on errors
+
+---
+
+# 6. DEPENDENCIES ANALYSIS
+
+## Core Dependencies
+- **FastAPI**: Web framework utama
+- **Pandas**: Data manipulation
+- **IO**: File handling utilities
+
+## Service Dependencies
+- **EDA Services**: `backend.services.eda.main`
+- **Agent Services**: `backend.services.agent.main`
+- **ML Services**: `backend.services.ml.*`
+- **Utils**: `backend.utils.read_csv`
+
+## External Dependencies
+- **FastAPI Components**: APIRouter, HTTPException, UploadFile, etc.
+- **Response Types**: StreamingResponse, JSONResponse
+- **Python Standard**: os, io, json, base64, uuid, typing
+
+---
+
+# 7. TESTING CONSIDERATIONS
+
+## Unit Testing
+- **Router Functions**: Test individual endpoint functions
+- **Error Cases**: Test semua error scenarios
+- **Response Format**: Validate response structure
+
+## Integration Testing
+- **Service Integration**: Test router-service integration
+- **File Upload**: Test file handling workflows
+- **ML Pipeline**: Test end-to-end ML workflows
+
+## Mock Requirements
+- **File Uploads**: Mock UploadFile objects
+- **Service Responses**: Mock service layer responses
+- **File System**: Mock file operations
+
+---
+
+# 8. MAINTENANCE NOTES
+
+## Code Quality
+- **Type Hints**: Consistent use of typing annotations
+- **Error Messages**: Bahasa Indonesia untuk user-facing messages
+- **Documentation**: Inline comments untuk complex logic
+
+## Extensibility
+- **New Endpoints**: Easy to add new router functions
+- **Service Integration**: Simple service layer integration
+- **Response Formats**: Consistent response structure
+
+## Monitoring
+- **Error Logging**: Print statements untuk debugging
+- **File Operations**: Log file save/delete operations
+- **Session Tracking**: Log session ID operations
+
+---
+
+# 9. KNOWN ISSUES & IMPROVEMENTS
+
+## Suggested Improvements
+1. **Error Handling**: More specific error messages
+2. **Validation**: Enhanced input validation
+3. **Logging**: Structured logging implementation
+4. **Caching**: Response caching untuk performance
+5. **Rate Limiting**: API rate limiting implementation
+
+---
+
+# 10. VERSION HISTORY
+
+## Version 1.0
+- Initial implementation
+- Basic EDA endpoints
+- ML pipeline endpoints
+- Agent integration
+- Session management
+- File upload handling
+
+---
+
+**Last Updated**: $(date)
+**Code Documentation Version**: 1.0
+**API Version**: 1.0

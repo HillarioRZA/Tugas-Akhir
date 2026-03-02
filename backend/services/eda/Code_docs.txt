@@ -1,0 +1,596 @@
+# Data Whisperer EDA Services - Code Documentation
+# ================================================
+
+## Overview
+Dokumentasi ini menjelaskan struktur kode, fungsi, dan implementasi detail dari EDA Services dalam Data Whisperer.
+Dokumentasi ini mencakup analisis mendalam dari setiap fungsi dan komponen kode dalam EDA services.
+
+---
+
+# 1. MAIN EDA MODULE
+## File: `backend/services/eda/main.py`
+
+### Purpose
+Modul utama yang menyediakan berbagai fungsi untuk Exploratory Data Analysis (EDA). Menangani statistik deskriptif, deteksi outlier, analisis distribusi, dan visualisasi data.
+
+### Imports
+```python
+import pandas as pd
+import io
+import matplotlib.pyplot as plt
+import seaborn as sns
+from statsmodels.stats.outliers_influence import variance_inflation_factor
+from typing import Optional
+from backend.utils.read_csv import _read_csv_with_fallback
+```
+
+### Dependencies Analysis
+- **pandas**: Data manipulation dan analysis
+- **matplotlib**: Plotting dan visualization
+- **seaborn**: Statistical visualization
+- **statsmodels**: Statistical models (VIF calculation)
+- **io**: StringIO untuk DataFrame info
+- **typing**: Type hints untuk Optional parameters
+
+---
+
+# 2. CORE FUNCTIONS
+
+## `get_csv_description(file_contents: bytes)`
+### Purpose
+Mendapatkan statistik deskriptif dari dataset CSV menggunakan pandas describe().
+
+### Parameters
+- `file_contents` (bytes): File CSV dalam format bytes
+
+### Process Flow
+1. **Data Loading**: Menggunakan `_read_csv_with_fallback()` untuk robust CSV reading
+2. **Statistical Analysis**: Memanggil `df.describe()` untuk statistik deskriptif
+3. **Data Conversion**: Mengkonversi hasil ke dictionary format
+4. **Error Handling**: Return None jika terjadi error
+
+### Returns
+```python
+{
+  "column_name": {
+    "count": 1000,
+    "mean": 35.5,
+    "std": 12.3,
+    "min": 18,
+    "25%": 25,
+    "50%": 35,
+    "75%": 45,
+    "max": 65
+  }
+}
+```
+
+### Error Handling
+- **File Reading Error**: Print error message, return None
+- **Data Processing Error**: Print error message, return None
+
+### Code Analysis
+```python
+def get_csv_description(file_contents: bytes):
+    try:
+        df = _read_csv_with_fallback(file_contents)
+        description = df.describe().to_dict()
+        return description
+    except Exception as e:
+        print(f"Error processing file: {e}")
+        return None
+```
+
+---
+
+## `get_outliers(file_contents: bytes, column_name: str)`
+### Purpose
+Mendeteksi outliers dalam kolom numerik menggunakan metode IQR (Interquartile Range).
+
+### Parameters
+- `file_contents` (bytes): File CSV dalam format bytes
+- `column_name` (str): Nama kolom untuk deteksi outliers
+
+### Process Flow
+1. **Data Loading**: Load CSV menggunakan `_read_csv_with_fallback()`
+2. **Column Validation**: Check jika kolom exists dan numeric
+3. **IQR Calculation**: Hitung Q1, Q3, dan IQR
+4. **Outlier Detection**: Identifikasi values di luar range [Q1-1.5*IQR, Q3+1.5*IQR]
+5. **Result Compilation**: Compile hasil dalam dictionary format
+
+### Returns
+```python
+{
+  "column_name": "age",
+  "outlier_count": 15,
+  "outliers_list": [18, 19, 65, 66, 67, ...]
+}
+```
+
+### Error Handling
+- **Column Not Found**: Return "column_not_found"
+- **Non-Numeric Column**: Return "column_not_numeric"
+- **Processing Error**: Print error message, return None
+
+### IQR Method Details
+```python
+Q1 = df[column_name].quantile(0.25)
+Q3 = df[column_name].quantile(0.75)
+IQR = Q3 - Q1
+lower_bound = Q1 - 1.5 * IQR
+upper_bound = Q3 + 1.5 * IQR
+outliers = df[(df[column_name] < lower_bound) | (df[column_name] > upper_bound)]
+```
+
+---
+
+## `get_skewness(file_contents: bytes)`
+### Purpose
+Menghitung skewness untuk semua kolom numerik dalam dataset.
+
+### Parameters
+- `file_contents` (bytes): File CSV dalam format bytes
+
+### Process Flow
+1. **Data Loading**: Load CSV menggunakan `_read_csv_with_fallback()`
+2. **Numeric Selection**: Filter hanya kolom numerik menggunakan `select_dtypes(include=['number'])`
+3. **Skewness Calculation**: Hitung skewness untuk setiap kolom numerik
+4. **Result Conversion**: Konversi ke dictionary format
+
+### Returns
+```python
+{
+  "age": 0.5,
+  "income": -1.2,
+  "score": 2.1
+}
+```
+
+### Skewness Interpretation
+- **0**: Perfectly symmetric distribution
+- **> 0**: Right-skewed (positive skew)
+- **< 0**: Left-skewed (negative skew)
+- **|skewness| > 1**: Highly skewed distribution
+
+### Error Handling
+- **File Reading Error**: Print error message, return None
+- **Data Processing Error**: Print error message, return None
+
+---
+
+## `get_categorical_insights(file_contents: bytes, column_name: str)`
+### Purpose
+Menganalisis kolom kategorikal untuk mendapatkan insights tentang distribusi nilai.
+
+### Parameters
+- `file_contents` (bytes): File CSV dalam format bytes
+- `column_name` (str): Nama kolom kategorikal untuk dianalisis
+
+### Process Flow
+1. **Data Loading**: Load CSV menggunakan `_read_csv_with_fallback()`
+2. **Column Validation**: Check jika kolom exists
+3. **Numeric Check**: Check jika kolom terlalu numerik (> 50 unique values)
+4. **Categorical Analysis**: Hitung unique values dan value counts
+5. **Result Compilation**: Compile hasil dalam dictionary format
+
+### Returns
+```python
+{
+  "column_name": "gender",
+  "unique_values_count": 2,
+  "value_counts": {
+    "Male": 500,
+    "Female": 500
+  }
+}
+```
+
+### Error Handling
+- **Column Not Found**: Return "column_not_found"
+- **Highly Numeric**: Return "column_is_highly_numeric" (nunique > 50)
+- **Processing Error**: Print error message, return None
+
+### Business Logic
+```python
+if pd.api.types.is_numeric_dtype(df[column_name]) and df[column_name].nunique() > 50:
+    return "column_is_highly_numeric"
+```
+
+---
+
+## `analyze_target(file_contents: bytes, target_column: str)`
+### Purpose
+Menganalisis variabel target untuk menentukan tipe masalah machine learning (klasifikasi atau regresi).
+
+### Parameters
+- `file_contents` (bytes): File CSV dalam format bytes
+- `target_column` (str): Nama kolom target untuk dianalisis
+
+### Process Flow
+1. **Data Loading**: Load CSV menggunakan `_read_csv_with_fallback()`
+2. **Column Validation**: Check jika target column exists
+3. **Data Cleaning**: Drop null values dari target column
+4. **Problem Type Detection**: Determine klasifikasi vs regresi
+5. **Analysis**: Generate appropriate analysis berdasarkan problem type
+
+### Returns
+```python
+# For Classification
+{
+  "problem_type": "Klasifikasi",
+  "class_distribution": {
+    "Yes": 0.6,
+    "No": 0.4
+  },
+  "is_imbalanced": false
+}
+
+# For Regression
+{
+  "problem_type": "Regresi",
+  "distribution_summary": {
+    "count": 1000,
+    "mean": 50.5,
+    "std": 15.2,
+    "min": 10,
+    "25%": 40,
+    "50%": 50,
+    "75%": 60,
+    "max": 100
+  }
+}
+```
+
+### Problem Type Detection Logic
+```python
+problem_type = "Klasifikasi"
+if pd.api.types.is_numeric_dtype(target_series) and target_series.nunique() > 15:
+    problem_type = "Regresi"
+```
+
+### Imbalance Detection
+```python
+is_imbalanced = any(v < 0.2 for v in distribution.values())
+```
+
+---
+
+## `run_full_data_profile(file_contents: bytes)`
+### Purpose
+Membuat profil data lengkap dengan semua analisis statistik dan informasi dataset.
+
+### Parameters
+- `file_contents` (bytes): File CSV dalam format bytes
+
+### Process Flow
+1. **Data Loading**: Load CSV menggunakan `_read_csv_with_fallback()`
+2. **Statistical Summary**: Generate descriptive statistics
+3. **Data Info**: Generate DataFrame info menggunakan StringIO
+4. **Missing Values**: Calculate missing values count dan percentage
+5. **Skewness**: Calculate skewness untuk semua kolom numerik
+6. **Result Compilation**: Compile semua informasi dalam comprehensive dictionary
+
+### Returns
+```python
+{
+  "data_shape": {"rows": 1000, "columns": 10},
+  "statistical_summary": {...},
+  "data_info": "DataFrame info string",
+  "missing_values_summary": {
+    "count": {...},
+    "percentage": {...}
+  },
+  "skewness": {...}
+}
+```
+
+### Data Info Generation
+```python
+info_buffer = io.StringIO()
+df.info(buf=info_buffer)
+info_str = info_buffer.getvalue()
+```
+
+### Missing Values Calculation
+```python
+missing_values = df.isnull().sum().to_dict()
+missing_percentage = (df.isnull().sum() / len(df) * 100).to_dict()
+```
+
+---
+
+## `calculate_vif(file_contents: bytes)`
+### Purpose
+Menghitung Variance Inflation Factor (VIF) untuk mendeteksi multikolinearitas antar fitur numerik.
+
+### Parameters
+- `file_contents` (bytes): File CSV dalam format bytes
+
+### Process Flow
+1. **Data Loading**: Load CSV menggunakan `_read_csv_with_fallback()`
+2. **Numeric Selection**: Filter hanya kolom numerik dan drop null values
+3. **Minimum Check**: Ensure minimal 2 kolom numerik
+4. **VIF Calculation**: Hitung VIF untuk setiap fitur menggunakan statsmodels
+5. **Result Formatting**: Format hasil dalam list of dictionaries
+
+### Returns
+```python
+[
+  {
+    "feature": "age",
+    "VIF": 1.2
+  },
+  {
+    "feature": "income",
+    "VIF": 3.5
+  }
+]
+```
+
+### VIF Calculation Logic
+```python
+vif_data = pd.DataFrame()
+vif_data["feature"] = df_numeric.columns
+vif_data["VIF"] = [variance_inflation_factor(df_numeric.values, i) for i in range(df_numeric.shape[1])]
+```
+
+### VIF Interpretation
+- **VIF < 5**: No multicollinearity
+- **5 ≤ VIF < 10**: Moderate multicollinearity
+- **VIF ≥ 10**: High multicollinearity
+
+### Error Handling
+- **Insufficient Columns**: Return message jika < 2 kolom numerik
+- **Processing Error**: Print error message, return None
+
+---
+
+## `generate_custom_plot(file_contents, plot_type, x_col, y_col, hue_col, orientation)`
+### Purpose
+Membuat visualisasi kustom berdasarkan parameter yang diberikan. Mendukung berbagai tipe plot dengan konfigurasi yang fleksibel.
+
+### Parameters
+- `file_contents` (bytes): File CSV dalam format bytes
+- `plot_type` (str): Tipe plot (histogram, bar, box, scatter)
+- `x_col` (str): Nama kolom untuk sumbu X
+- `y_col` (Optional[str]): Nama kolom untuk sumbu Y
+- `hue_col` (Optional[str]): Nama kolom untuk pewarnaan
+- `orientation` (str): Orientasi plot ('v' untuk vertikal, 'h' untuk horizontal)
+
+### Process Flow
+1. **Data Loading**: Load CSV menggunakan `_read_csv_with_fallback()`
+2. **Column Validation**: Validate semua required columns
+3. **Data Type Validation**: Check numeric requirements untuk specific plot types
+4. **Plot Generation**: Generate plot berdasarkan tipe dan parameter
+5. **Image Export**: Export plot sebagai PNG bytes
+
+### Supported Plot Types
+- **histogram**: Distribusi data dengan KDE
+- **bar**: Bar chart atau count plot
+- **box**: Box plot untuk distribusi
+- **scatter**: Scatter plot untuk hubungan
+
+### Plot Generation Logic
+```python
+if plot_type == 'histogram':
+    sns.histplot(data=df, x=x_col, hue=hue_col, kde=True)
+elif plot_type == 'bar':
+    if y_col is None:
+        sns.countplot(**{k: v for k, v in plot_kwargs.items() if k != 'y'})
+    else:
+        sns.barplot(**plot_kwargs)
+elif plot_type == 'box':
+    sns.boxplot(**plot_kwargs)
+elif plot_type == 'scatter':
+    sns.scatterplot(**plot_kwargs)
+```
+
+### Validation Logic
+```python
+# Scatter plot requires both X and Y columns
+if plot_type in ['scatter', 'box'] and not y_col:
+    return f"error: Plot tipe '{plot_type}' membutuhkan kolom sumbu Y (y_col)."
+
+# Scatter plot requires numeric columns
+if plot_type == 'scatter' and not (is_x_numeric and is_y_numeric):
+    return "error: Scatter plot membutuhkan kolom X dan Y yang keduanya numerik."
+
+# Box plot requires numeric Y column
+if plot_type == 'box' and not is_y_numeric:
+    return "error: Box plot membutuhkan kolom Y yang numerik."
+```
+
+### Orientation Handling
+```python
+if orientation == 'h' and plot_type in ['bar', 'box']:
+    plot_kwargs['x'], plot_kwargs['y'] = y_col, x_col
+    plot_kwargs['orient'] = 'h'
+```
+
+### Image Export
+```python
+img_buffer = io.BytesIO()
+plt.savefig(img_buffer, format='png', bbox_inches='tight')
+plt.close()
+img_buffer.seek(0)
+return img_buffer.getvalue()
+```
+
+### Error Handling
+- **File Reading Error**: Return error message
+- **Column Not Found**: Return specific error message
+- **Data Type Error**: Return validation error
+- **Plot Generation Error**: Return error message dengan details
+
+---
+
+# 3. CODE ARCHITECTURE ANALYSIS
+
+## Design Patterns
+
+### 1. Template Method Pattern
+- **Common Flow**: Load data → Validate → Process → Return results
+- **Customization**: Different processing logic untuk setiap function
+- **Error Handling**: Consistent error handling pattern
+
+### 2. Strategy Pattern
+- **Plot Types**: Different strategies untuk different plot types
+- **Analysis Types**: Different strategies untuk different analysis types
+- **Validation**: Different validation strategies
+
+### 3. Factory Pattern
+- **Data Loading**: `_read_csv_with_fallback()` sebagai data loading factory
+- **Plot Generation**: Different plot generators berdasarkan type
+
+## Error Handling Strategy
+
+### Consistent Error Handling
+```python
+try:
+    # Main processing logic
+    result = process_data()
+    return result
+except Exception as e:
+    print(f"Error message: {e}")
+    return None
+```
+
+### Specific Error Messages
+- **Column Not Found**: "column_not_found"
+- **Non-Numeric Column**: "column_not_numeric"
+- **Highly Numeric**: "column_is_highly_numeric"
+- **Insufficient Columns**: Custom message untuk VIF
+
+### Error Recovery
+- **Graceful Degradation**: Return partial results jika possible
+- **Clear Messages**: Detailed error messages dalam bahasa Indonesia
+- **Logging**: Print error messages untuk debugging
+
+## Performance Considerations
+
+### Memory Management
+- **Data Loading**: Efficient CSV reading dengan fallback
+- **Data Processing**: Process only necessary columns
+- **Plot Generation**: Close matplotlib figures setelah use
+- **Buffer Management**: Proper buffer handling untuk image export
+
+### Processing Optimization
+- **Lazy Loading**: Load data only when needed
+- **Column Selection**: Select only necessary columns
+- **Numeric Filtering**: Filter numeric columns efficiently
+- **Null Handling**: Handle null values appropriately
+
+## Security Considerations
+
+### Input Validation
+- **File Format**: Validate CSV format
+- **Column Names**: Validate column existence
+- **Data Types**: Validate data type requirements
+- **Size Limits**: Implicit size limits melalui memory
+
+### Data Privacy
+- **No Data Storage**: Functions tidak menyimpan data
+- **Memory Cleanup**: Automatic cleanup setelah processing
+- **Temporary Files**: No temporary file creation
+
+---
+
+# 4. INTEGRATION POINTS
+
+## Service Dependencies
+- **CSV Reader**: `backend.utils.read_csv._read_csv_with_fallback`
+- **Visualization**: `backend.services.visualization.main`
+- **Agent Services**: `backend.services.agent.main`
+
+## External Dependencies
+- **Pandas**: Data manipulation dan analysis
+- **Matplotlib**: Plotting dan visualization
+- **Seaborn**: Statistical visualization
+- **Statsmodels**: Statistical models (VIF)
+
+## API Integration
+- **FastAPI**: Web framework integration
+- **Multipart**: File upload handling
+- **StreamingResponse**: Image streaming
+- **JSONResponse**: Data responses
+
+---
+
+# 5. TESTING CONSIDERATIONS
+
+## Unit Testing
+- **Function Testing**: Test individual functions
+- **Parameter Validation**: Test parameter validation
+- **Error Handling**: Test error scenarios
+- **Data Processing**: Test data processing logic
+
+## Integration Testing
+- **File Upload**: Test file upload workflows
+- **Data Processing**: Test end-to-end data processing
+- **Visualization**: Test plot generation
+- **API Integration**: Test API endpoint integration
+
+## Mock Requirements
+- **File Operations**: Mock file reading operations
+- **Data Processing**: Mock pandas operations
+- **Visualization**: Mock matplotlib operations
+- **External Dependencies**: Mock external service calls
+
+---
+
+# 6. MAINTENANCE NOTES
+
+## Code Quality
+- **Type Hints**: Consistent use of typing annotations
+- **Error Messages**: Clear, actionable error messages
+- **Documentation**: Inline documentation untuk complex logic
+- **Logging**: Print statements untuk debugging
+
+## Extensibility
+- **New Functions**: Easy to add new analysis functions
+- **New Plot Types**: Easy to add new plot types
+- **New Validations**: Easy to add new validation logic
+- **New Metrics**: Easy to add new statistical metrics
+
+## Monitoring
+- **Performance Metrics**: Track processing times
+- **Error Rates**: Monitor error frequencies
+- **Memory Usage**: Monitor memory consumption
+- **Data Quality**: Monitor data quality issues
+
+---
+
+# 7. KNOWN ISSUES & IMPROVEMENTS
+
+## Current Issues
+1. **Memory Usage**: Large datasets may cause memory issues
+2. **Error Messages**: Some error messages could be more specific
+3. **Validation**: Could use more comprehensive input validation
+4. **Performance**: Some operations could be optimized
+
+## Suggested Improvements
+1. **Caching**: Implement result caching untuk performance
+2. **Async Operations**: Add async support untuk large datasets
+3. **Better Validation**: Enhanced input validation
+4. **Logging**: Structured logging implementation
+5. **Memory Optimization**: Better memory management
+6. **Error Recovery**: More robust error recovery mechanisms
+7. **Documentation**: More detailed inline documentation
+
+---
+
+# 8. VERSION HISTORY
+
+## Version 1.0
+- Initial implementation
+- Basic EDA functions
+- Statistical analysis
+- Visualization support
+- Error handling
+- File processing
+
+---
+
+**Last Updated**: $(date)
+**EDA Services Code Documentation Version**: 1.0
+**API Version**: 1.0

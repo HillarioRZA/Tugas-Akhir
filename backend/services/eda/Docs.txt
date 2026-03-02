@@ -1,0 +1,534 @@
+# Data Whisperer EDA Services Documentation
+# ==========================================
+
+## Overview
+Dokumentasi ini menjelaskan layanan Exploratory Data Analysis (EDA) yang menyediakan berbagai fungsi untuk menganalisis dan memahami data secara mendalam. EDA services mencakup statistik deskriptif, deteksi outlier, analisis distribusi, dan visualisasi data.
+
+## Base URL
+```
+http://localhost:8000/api/eda
+```
+
+## Authentication
+Tidak memerlukan autentikasi khusus, namun menggunakan Session ID untuk tracking interaksi.
+
+---
+
+# 1. DATA DESCRIPTION ENDPOINT
+
+## POST /api/eda/describe
+**Deskripsi:** Mendapatkan statistik deskriptif dari dataset CSV
+
+**Request Body (multipart/form-data):**
+- `file` (required): File CSV untuk dianalisis
+
+**Response:**
+```json
+{
+  "filename": "data.csv",
+  "statistics": {
+    "age": {
+      "count": 1000,
+      "mean": 35.5,
+      "std": 12.3,
+      "min": 18,
+      "25%": 25,
+      "50%": 35,
+      "75%": 45,
+      "max": 65
+    },
+    "income": {
+      "count": 1000,
+      "mean": 50000,
+      "std": 15000,
+      "min": 20000,
+      "25%": 35000,
+      "50%": 50000,
+      "75%": 65000,
+      "max": 100000
+    }
+  }
+}
+```
+
+**Error Responses:**
+- `400`: Format file tidak valid
+- `500`: Gagal memproses file CSV
+
+**Contoh Penggunaan:**
+```bash
+curl -X POST "http://localhost:8000/api/eda/describe" \
+  -F "file=@data.csv"
+```
+
+---
+
+# 2. VISUALIZATION ENDPOINTS
+
+## POST /api/eda/correlation-heatmap
+**Deskripsi:** Membuat heatmap korelasi antar variabel numerik
+
+**Request Body (multipart/form-data):**
+- `file` (required): File CSV
+
+**Response:** PNG image stream
+
+**Error Responses:**
+- `400`: Format file tidak valid
+- `500`: Gagal membuat heatmap
+
+## POST /api/eda/histogram
+**Deskripsi:** Membuat histogram untuk kolom numerik tertentu
+
+**Request Body (multipart/form-data):**
+- `file` (required): File CSV
+- `column_name` (required): Nama kolom untuk histogram
+
+**Response:** PNG image stream
+
+**Error Responses:**
+- `400`: Format file tidak valid atau kolom bukan numerik
+- `404`: Kolom tidak ditemukan
+- `500`: Gagal membuat histogram
+
+## POST /api/eda/missing-value-heatmap
+**Deskripsi:** Membuat heatmap untuk menunjukkan missing values
+
+**Request Body (multipart/form-data):**
+- `file` (required): File CSV
+
+**Response:** PNG image stream
+
+**Error Responses:**
+- `400`: Format file tidak valid
+- `500`: Gagal membuat heatmap
+
+## POST /api/eda/target-feature-plot
+**Deskripsi:** Membuat visualisasi hubungan target-feature
+
+**Request Body (multipart/form-data):**
+- `file` (required): File CSV
+- `target_column` (required): Nama kolom target
+- `feature_column` (required): Nama kolom feature
+
+**Response:** PNG image stream
+
+**Error Responses:**
+- `400`: Format file tidak valid
+- `404`: Kolom tidak ditemukan
+- `500`: Gagal membuat visualisasi
+
+---
+
+# 3. STATISTICAL ANALYSIS ENDPOINTS
+
+## POST /api/eda/outliers
+**Deskripsi:** Mendeteksi outliers dalam kolom numerik
+
+**Request Body (multipart/form-data):**
+- `file` (required): File CSV
+- `column_name` (required): Nama kolom untuk deteksi outliers
+
+**Response:**
+```json
+{
+  "column_name": "age",
+  "outlier_count": 15,
+  "outliers_list": [18, 19, 65, 66, 67, ...]
+}
+```
+
+**Error Responses:**
+- `400`: Format file tidak valid atau kolom bukan numerik
+- `404`: Kolom tidak ditemukan
+- `500`: Gagal mendeteksi outliers
+
+## POST /api/eda/skewness
+**Deskripsi:** Menghitung skewness untuk semua kolom numerik
+
+**Request Body (multipart/form-data):**
+- `file` (required): File CSV
+
+**Response:**
+```json
+{
+  "skewness": {
+    "age": 0.5,
+    "income": -1.2,
+    "score": 2.1
+  }
+}
+```
+
+**Error Responses:**
+- `400`: Format file tidak valid
+- `500`: Gagal menghitung skewness
+
+## POST /api/eda/categorical-insights
+**Deskripsi:** Menganalisis kolom kategorikal
+
+**Request Body (multipart/form-data):**
+- `file` (required): File CSV
+- `column_name` (required): Nama kolom kategorikal
+
+**Response:**
+```json
+{
+  "column_name": "gender",
+  "unique_values_count": 2,
+  "value_counts": {
+    "Male": 500,
+    "Female": 500
+  }
+}
+```
+
+**Error Responses:**
+- `400`: Format file tidak valid atau kolom terlalu numerik
+- `404`: Kolom tidak ditemukan
+- `500`: Gagal menganalisis kolom
+
+## POST /api/eda/target-analysis
+**Deskripsi:** Menganalisis variabel target untuk machine learning
+
+**Request Body (multipart/form-data):**
+- `file` (required): File CSV
+- `target_column` (required): Nama kolom target
+
+**Response:**
+```json
+{
+  "problem_type": "Klasifikasi",
+  "class_distribution": {
+    "Yes": 0.6,
+    "No": 0.4
+  },
+  "is_imbalanced": false
+}
+```
+
+**Error Responses:**
+- `400`: Format file tidak valid
+- `404`: Kolom target tidak ditemukan
+- `500`: Gagal menganalisis target
+
+---
+
+# 4. COMPREHENSIVE ANALYSIS ENDPOINTS
+
+## POST /api/eda/full-profile
+**Deskripsi:** Membuat profil data lengkap dengan semua analisis
+
+**Request Body (multipart/form-data):**
+- `file` (required): File CSV
+
+**Response:**
+```json
+{
+  "data_shape": {
+    "rows": 1000,
+    "columns": 10
+  },
+  "statistical_summary": {...},
+  "data_info": "DataFrame info string",
+  "missing_values_summary": {
+    "count": {...},
+    "percentage": {...}
+  },
+  "skewness": {...}
+}
+```
+
+**Error Responses:**
+- `400`: Format file tidak valid
+- `500`: Gagal membuat profil data
+
+## POST /api/eda/vif
+**Deskripsi:** Menghitung Variance Inflation Factor untuk deteksi multikolinearitas
+
+**Request Body (multipart/form-data):**
+- `file` (required): File CSV
+
+**Response:**
+```json
+{
+  "vif_results": [
+    {
+      "feature": "age",
+      "VIF": 1.2
+    },
+    {
+      "feature": "income",
+      "VIF": 3.5
+    }
+  ]
+}
+```
+
+**Error Responses:**
+- `400`: Format file tidak valid
+- `500`: Gagal menghitung VIF
+
+---
+
+# 5. CUSTOM VISUALIZATION
+
+## POST /api/agent/custom-visualize
+**Deskripsi:** Membuat visualisasi kustom berdasarkan prompt natural language
+
+**Request Body (multipart/form-data):**
+- `file` (required): File CSV
+- `prompt` (required): Deskripsi visualisasi yang diinginkan
+
+**Response:**
+```json
+{
+  "plan": {
+    "plot_type": "scatter",
+    "x_col": "age",
+    "y_col": "income",
+    "hue_col": "gender",
+    "orientation": "v"
+  },
+  "summary": "Interpretasi visualisasi",
+  "image_base64": "base64-encoded-image",
+  "image_format": "png",
+  "session_id": "uuid-string"
+}
+```
+
+**Supported Plot Types:**
+- `histogram`: Distribusi data
+- `bar`: Bar chart
+- `box`: Box plot
+- `scatter`: Scatter plot
+
+**Error Responses:**
+- `400`: File CSV dibutuhkan atau format tidak valid
+- `500`: Error dalam pembuatan plot
+
+---
+
+# 6. DATA ANALYSIS WORKFLOWS
+
+## Basic EDA Workflow
+1. **Data Overview**: POST `/api/eda/describe` untuk statistik dasar
+2. **Missing Data**: POST `/api/eda/missing-value-heatmap` untuk missing values
+3. **Distribution**: POST `/api/eda/skewness` untuk analisis distribusi
+4. **Outliers**: POST `/api/eda/outliers` untuk deteksi outlier
+5. **Correlations**: POST `/api/eda/correlation-heatmap` untuk korelasi
+6. **Full Profile**: POST `/api/eda/full-profile` untuk analisis lengkap
+
+## Machine Learning Preparation Workflow
+1. **Target Analysis**: POST `/api/eda/target-analysis` untuk analisis target
+2. **Feature Analysis**: POST `/api/eda/categorical-insights` untuk fitur kategorikal
+3. **Multicollinearity**: POST `/api/eda/vif` untuk deteksi multikolinearitas
+4. **Visualization**: POST `/api/eda/target-feature-plot` untuk hubungan target-feature
+
+## Custom Analysis Workflow
+1. **Custom Visualization**: POST `/api/agent/custom-visualize` dengan prompt natural language
+2. **Specific Analysis**: Gunakan endpoint spesifik berdasarkan kebutuhan
+3. **Iterative Analysis**: Lakukan analisis bertahap berdasarkan hasil sebelumnya
+
+---
+
+# 7. RESPONSE FORMATS
+
+## Standard Response Structure
+```json
+{
+  "filename": "data.csv",
+  "statistics": {...},
+  "data_shape": {...},
+  "missing_values_summary": {...},
+  "skewness": {...}
+}
+```
+
+## Image Response Structure
+- **Content-Type**: `image/png`
+- **Format**: PNG image stream
+- **Usage**: Direct display atau save to file
+
+## Error Response Structure
+```json
+{
+  "detail": "Error message description"
+}
+```
+
+---
+
+# 8. DATA REQUIREMENTS
+
+## File Format
+- **Supported**: CSV files only
+- **Encoding**: UTF-8 recommended
+- **Headers**: First row should contain column names
+- **Delimiter**: Comma-separated values
+
+## Data Types
+- **Numeric**: For statistical analysis, skewness, outliers
+- **Categorical**: For categorical insights, target analysis
+- **Mixed**: For comprehensive analysis
+
+## Size Considerations
+- **Small datasets**: < 10MB recommended
+- **Large datasets**: May require more processing time
+- **Memory usage**: Depends on dataset size
+
+---
+
+# 9. STATISTICAL METHODS
+
+## Descriptive Statistics
+- **Count**: Number of non-null values
+- **Mean**: Average value
+- **Std**: Standard deviation
+- **Min/Max**: Minimum and maximum values
+- **Quartiles**: 25%, 50%, 75% percentiles
+
+## Outlier Detection
+- **Method**: IQR (Interquartile Range) method
+- **Formula**: Q1 - 1.5*IQR < value < Q3 + 1.5*IQR
+- **Threshold**: Values outside this range are considered outliers
+
+## Skewness Analysis
+- **Range**: -∞ to +∞
+- **Interpretation**:
+  - 0: Perfectly symmetric
+  - > 0: Right-skewed (positive skew)
+  - < 0: Left-skewed (negative skew)
+  - |skewness| > 1: Highly skewed
+
+## VIF Analysis
+- **Purpose**: Detect multicollinearity
+- **Threshold**: VIF > 10 indicates multicollinearity
+- **Interpretation**: Higher VIF means higher correlation with other features
+
+---
+
+# 10. VISUALIZATION FEATURES
+
+## Plot Types
+- **Histogram**: Distribution of single variable
+- **Bar Chart**: Categorical data visualization
+- **Box Plot**: Distribution with outliers
+- **Scatter Plot**: Relationship between two variables
+- **Heatmap**: Correlation matrix visualization
+
+## Customization Options
+- **Orientation**: Vertical (v) or Horizontal (h)
+- **Hue**: Color coding by categorical variable
+- **Size**: Configurable figure size
+- **Labels**: Automatic title and axis labels
+
+## Output Format
+- **Format**: PNG images
+- **Resolution**: High-quality output
+- **Size**: Optimized for web display
+- **Base64**: Encoded for API responses
+
+---
+
+# 11. ERROR HANDLING
+
+## Common Error Scenarios
+1. **File Not Found**: File tidak ditemukan
+2. **Invalid Format**: Format file tidak didukung
+3. **Column Not Found**: Kolom yang diminta tidak ada
+4. **Data Type Error**: Tipe data tidak sesuai
+5. **Processing Error**: Error dalam pemrosesan data
+
+## Error Recovery
+- **Graceful Degradation**: Return partial results if possible
+- **Clear Messages**: Detailed error messages dalam bahasa Indonesia
+- **Validation**: Input validation sebelum processing
+- **Logging**: Error logging untuk debugging
+
+---
+
+# 12. PERFORMANCE CONSIDERATIONS
+
+## Processing Time
+- **Small datasets**: < 1 second
+- **Medium datasets**: 1-5 seconds
+- **Large datasets**: 5-30 seconds
+- **Very large datasets**: > 30 seconds
+
+## Memory Usage
+- **Data loading**: Depends on file size
+- **Processing**: Additional memory for calculations
+- **Visualization**: Memory for plot generation
+- **Cleanup**: Automatic memory cleanup
+
+## Optimization Tips
+- **File size**: Keep files under 100MB for optimal performance
+- **Column selection**: Use only necessary columns
+- **Data types**: Ensure proper data types
+- **Missing values**: Handle missing values appropriately
+
+---
+
+# 13. INTEGRATION NOTES
+
+## Service Dependencies
+- **CSV Reader**: `backend.utils.read_csv._read_csv_with_fallback`
+- **Visualization**: `backend.services.visualization.main`
+- **Agent Services**: `backend.services.agent.main`
+
+## External Dependencies
+- **Pandas**: Data manipulation
+- **Matplotlib**: Plotting library
+- **Seaborn**: Statistical visualization
+- **Statsmodels**: Statistical models
+
+## API Integration
+- **FastAPI**: Web framework
+- **Multipart**: File upload handling
+- **StreamingResponse**: Image streaming
+- **JSONResponse**: Data responses
+
+---
+
+# 14. BEST PRACTICES
+
+## Data Preparation
+1. **Clean Data**: Remove unnecessary columns
+2. **Handle Missing Values**: Decide on missing value strategy
+3. **Data Types**: Ensure correct data types
+4. **Encoding**: Use UTF-8 encoding
+
+## Analysis Strategy
+1. **Start Simple**: Begin with basic descriptive statistics
+2. **Visualize**: Use visualizations to understand data
+3. **Iterate**: Build analysis incrementally
+4. **Validate**: Cross-check results
+
+## Performance Optimization
+1. **File Size**: Keep files reasonably sized
+2. **Column Selection**: Use only necessary columns
+3. **Caching**: Reuse results when possible
+4. **Cleanup**: Clean up resources after use
+
+---
+
+# 15. TROUBLESHOOTING
+
+## Common Issues
+1. **File Upload Fails**: Check file format and size
+2. **Column Not Found**: Verify column names
+3. **Memory Error**: Reduce file size
+4. **Slow Processing**: Check data complexity
+
+## Debug Tips
+1. **Check Logs**: Review error messages
+2. **Validate Input**: Ensure proper file format
+3. **Test Small**: Start with small datasets
+4. **Monitor Resources**: Check memory and CPU usage
+
+---
+
+**Last Updated**: $(date)
+**EDA Services Documentation Version**: 1.0
+**API Version**: 1.0

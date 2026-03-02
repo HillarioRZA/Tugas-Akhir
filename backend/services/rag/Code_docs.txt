@@ -1,0 +1,556 @@
+# Data Whisperer RAG Services - Code Documentation
+# ================================================
+
+## Overview
+Dokumentasi ini menjelaskan struktur kode, fungsi, dan implementasi detail dari RAG (Retrieval Augmented Generation) Services dalam Data Whisperer.
+RAG Services menyediakan pipeline lengkap untuk PDF parsing, text chunking, vectorization, dan question answering.
+
+---
+
+# 1. PARSER MODULE
+## File: `backend/services/rag/parser.py`
+
+### Purpose
+Modul yang menangani parsing PDF files untuk ekstraksi text content yang akan digunakan dalam RAG pipeline.
+
+### Imports
+```python
+import fitz 
+import io
+```
+
+### Dependencies Analysis
+- **fitz (PyMuPDF)**: PDF parsing library untuk text extraction
+- **io**: Input/Output operations (imported but not used in current implementation)
+
+---
+
+## Core Functions
+
+### `parse_pdf(file_contents: bytes) -> str`
+**Purpose**: Mengekstrak text content dari PDF file bytes.
+
+**Parameters**:
+- `file_contents` (bytes): PDF file content dalam format bytes
+
+**Process Flow**:
+1. **PDF Document Opening**: Open PDF dari bytes stream
+2. **Page Iteration**: Iterate melalui semua pages dalam PDF
+3. **Text Extraction**: Extract text dari setiap page
+4. **Content Concatenation**: Concatenate semua text content
+5. **Document Cleanup**: Close PDF document
+6. **Return Result**: Return extracted text atau error message
+
+**Returns**: String dengan extracted text content atau error message
+
+**Code Analysis**:
+```python
+def parse_pdf(file_contents: bytes) -> str:
+    text_content = ""
+    try:
+        # Open PDF from bytes stream
+        pdf_document = fitz.open(stream=file_contents, filetype="pdf")
+
+        # Iterate through all pages
+        for page_num in range(len(pdf_document)):
+            page = pdf_document.load_page(page_num)
+            text_content += page.get_text()
+
+        # Close document
+        pdf_document.close()
+        return text_content
+
+    except Exception as e:
+        print(f"Error saat parsing PDF: {e}")
+        return f"Error: Gagal memproses file PDF. Detail: {str(e)}"
+```
+
+### PDF Processing
+- **Stream Processing**: Open PDF dari bytes stream
+- **Page-by-Page**: Process setiap page secara individual
+- **Text Extraction**: Extract text menggunakan `page.get_text()`
+- **Content Aggregation**: Concatenate semua text content
+
+### Error Handling
+- **Comprehensive Exception Handling**: Catch all exceptions
+- **Error Logging**: Print error details untuk debugging
+- **User-Friendly Messages**: Return error message dalam bahasa Indonesia
+- **Resource Cleanup**: Ensure PDF document is closed
+
+### Business Logic
+- **Memory Efficient**: Process PDF dari memory stream
+- **Complete Extraction**: Extract text dari semua pages
+- **Text Aggregation**: Combine text dari semua pages
+- **Error Recovery**: Graceful error handling dengan informative messages
+
+---
+
+# 2. RETRIEVER MODULE
+## File: `backend/services/rag/retriever.py`
+
+### Purpose
+Modul yang menangani retrieval dan generation dalam RAG pipeline. Menggunakan vector store untuk retrieve relevant documents dan LLM untuk generate answers.
+
+### Imports
+```python
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnablePassthrough, RunnableParallel
+from langchain_core.output_parsers import StrOutputParser
+```
+
+### Dependencies Analysis
+- **langchain_core.prompts**: ChatPromptTemplate untuk prompt management
+- **langchain_core.runnables**: RunnablePassthrough untuk data passing
+- **langchain_core.output_parsers**: StrOutputParser untuk output parsing
+
+---
+
+## Core Functions
+
+### `format_docs(docs)`
+**Purpose**: Helper function untuk menggabungkan konten dokumen relevan menjadi satu string.
+
+**Parameters**:
+- `docs`: List of document objects dengan page_content attribute
+
+**Process Flow**:
+1. **Document Iteration**: Iterate melalui semua documents
+2. **Content Extraction**: Extract page_content dari setiap document
+3. **String Joining**: Join semua content dengan double newline separator
+
+**Returns**: String dengan combined document content
+
+**Code Analysis**:
+```python
+def format_docs(docs):
+    """Helper untuk menggabungkan konten dokumen relevan menjadi satu string."""
+    return "\n\n".join(doc.page_content for doc in docs)
+```
+
+### Business Logic
+- **Content Aggregation**: Combine multiple document contents
+- **Separator**: Use double newline untuk clear separation
+- **Document Processing**: Process document objects dengan page_content
+
+---
+
+### `get_rag_answer(question: str, vector_store, llm_text)`
+**Purpose**: Menjawab pertanyaan menggunakan RAG workflow dengan vector store retrieval dan LLM generation.
+
+**Parameters**:
+- `question` (str): Pertanyaan dari pengguna
+- `vector_store`: FAISS vector store object
+- `llm_text`: LLM object (ChatGoogleGenerativeAI)
+
+**Process Flow**:
+1. **Vector Store Validation**: Check jika vector store valid
+2. **Retriever Creation**: Create retriever dari vector store
+3. **Document Retrieval**: Retrieve relevant documents
+4. **Document Logging**: Log retrieved documents untuk debugging
+5. **Prompt Template**: Create prompt template untuk RAG
+6. **RAG Chain**: Create dan execute RAG chain
+7. **Answer Generation**: Generate answer menggunakan LLM
+8. **Return Result**: Return generated answer atau error
+
+**Returns**: String dengan generated answer atau error message
+
+**Code Analysis**:
+```python
+def get_rag_answer(question: str, vector_store, llm_text):
+    """
+    Menjawab pertanyaan menggunakan alur kerja RAG.
+
+    Args:
+        question: Pertanyaan dari pengguna.
+        vector_store: Objek FAISS vector store yang aktif.
+        llm_text: Objek LLM (misal: ChatGoogleGenerativeAI) yang sudah diinisialisasi.
+
+    Returns:
+        Jawaban dari LLM atau pesan error.
+    """
+    # Vector store validation
+    if not hasattr(vector_store, 'as_retriever'):
+        return "Error: Vector store tidak valid atau belum diinisialisasi."
+        
+    try:
+        # Create retriever
+        retriever = vector_store.as_retriever(search_kwargs={'k': 10})
+
+        # Retrieve relevant documents
+        relevant_docs = retriever.get_relevant_documents(question)
+        
+        # Log retrieved documents
+        print(f"\n--- Dokumen Relevan yang Ditemukan untuk Pertanyaan: '{question}' ---")
+        for i, doc in enumerate(relevant_docs):
+            print(f"--- Dokumen {i+1} ---")
+            print(doc.page_content)
+            print("-" * 20)
+        print("-------------------------------------------------------------\n")
+
+        # Create prompt template
+        template = """Anda adalah asisten AI yang menjawab pertanyaan hanya berdasarkan konteks yang diberikan. 
+        Jika Anda tidak tahu jawabannya dari konteks, katakan saja Anda tidak tahu. Jawab dengan ringkas.
+
+        Konteks:
+        {context}
+
+        Pertanyaan: {question}
+
+        Jawaban:"""
+        prompt = ChatPromptTemplate.from_template(template)
+
+        # Create RAG chain
+        rag_chain = (
+            {"context": retriever | format_docs, "question": RunnablePassthrough()}
+            | prompt
+            | llm_text
+            | StrOutputParser()
+        )
+
+        # Execute RAG chain
+        answer = rag_chain.invoke(question)
+        
+        return answer
+
+    except Exception as e:
+        print(f"Error saat menjalankan RAG chain: {e}")
+        return f"Error: Gagal memproses pertanyaan RAG. Detail: {str(e)}"
+```
+
+### RAG Workflow
+1. **Retrieval Phase**: Retrieve relevant documents dari vector store
+2. **Context Preparation**: Format retrieved documents sebagai context
+3. **Generation Phase**: Generate answer menggunakan LLM dengan context
+4. **Output Parsing**: Parse LLM output ke string format
+
+### Vector Store Integration
+- **Retriever Creation**: `vector_store.as_retriever(search_kwargs={'k': 10})`
+- **Document Retrieval**: `retriever.get_relevant_documents(question)`
+- **Top-K Retrieval**: Retrieve top 10 relevant documents
+
+### Prompt Engineering
+- **Context-Aware**: Prompt includes retrieved context
+- **Question-Answer Format**: Clear question-answer structure
+- **Fallback Handling**: Handle cases where answer is not in context
+- **Conciseness**: Request concise answers
+
+### RAG Chain Architecture
+- **Context Retrieval**: `retriever | format_docs` untuk context
+- **Question Passing**: `RunnablePassthrough()` untuk question
+- **Prompt Processing**: `prompt` untuk template processing
+- **LLM Generation**: `llm_text` untuk answer generation
+- **Output Parsing**: `StrOutputParser()` untuk string output
+
+### Error Handling
+- **Vector Store Validation**: Check vector store validity
+- **Chain Execution**: Handle RAG chain execution errors
+- **Error Logging**: Print error details untuk debugging
+- **User-Friendly Messages**: Return error messages dalam bahasa Indonesia
+
+### Debugging Features
+- **Document Logging**: Log retrieved documents untuk debugging
+- **Question Logging**: Log question untuk debugging
+- **Error Logging**: Log errors untuk debugging
+
+---
+
+# 3. VECTORIZER MODULE
+## File: `backend/services/rag/vectorizer.py`
+
+### Purpose
+Modul yang menangani text chunking dan vectorization untuk RAG pipeline. Menggunakan Google Generative AI embeddings dan FAISS vector store.
+
+### Imports
+```python
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.vectorstores import FAISS
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from dotenv import load_dotenv
+load_dotenv()
+```
+
+### Dependencies Analysis
+- **langchain.text_splitter**: RecursiveCharacterTextSplitter untuk text chunking
+- **langchain_community.vectorstores**: FAISS untuk vector storage
+- **langchain_google_genai**: GoogleGenerativeAIEmbeddings untuk embeddings
+- **dotenv**: Environment variable loading
+
+### Global Configuration
+```python
+embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
+```
+
+---
+
+## Core Functions
+
+### `create_vector_store(text_content: str)`
+**Purpose**: Membuat FAISS vector store dari text content dengan chunking dan embedding.
+
+**Parameters**:
+- `text_content` (str): Text content untuk di-vectorize
+
+**Process Flow**:
+1. **Text Chunking**: Split text menjadi chunks menggunakan RecursiveCharacterTextSplitter
+2. **Chunk Validation**: Validate jika chunks exist
+3. **Vector Store Creation**: Create FAISS vector store dari chunks
+4. **Return Result**: Return vector store atau error message
+
+**Returns**: FAISS vector store object atau error message
+
+**Code Analysis**:
+```python
+def create_vector_store(text_content: str):
+    try:
+        # Text chunking configuration
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=8000,
+            chunk_overlap=500,
+            length_function=len
+        )
+        
+        # Split text into chunks
+        chunks = text_splitter.split_text(text_content)
+
+        # Validate chunks
+        if not chunks:
+            return "Error: Tidak ada teks yang bisa diindeks dari PDF."
+
+        # Create vector store
+        vector_store = FAISS.from_texts(chunks, embedding=embeddings)
+
+        return vector_store
+
+    except Exception as e:
+        print(f"Error saat membuat vector store: {e}")
+        return f"Error: Gagal membuat index vector. Detail: {str(e)}"
+```
+
+### Text Chunking Configuration
+- **Chunk Size**: 8000 characters per chunk
+- **Chunk Overlap**: 500 characters overlap antara chunks
+- **Length Function**: `len` untuk character counting
+- **Recursive Splitting**: RecursiveCharacterTextSplitter untuk intelligent splitting
+
+### Embedding Configuration
+- **Model**: `models/gemini-embedding-001` (Google Generative AI)
+- **Vector Store**: FAISS untuk efficient similarity search
+- **Text Processing**: Process chunks dengan embeddings
+
+### Error Handling
+- **Chunk Validation**: Check jika chunks exist
+- **Vector Store Creation**: Handle vector store creation errors
+- **Error Logging**: Print error details untuk debugging
+- **User-Friendly Messages**: Return error messages dalam bahasa Indonesia
+
+### Business Logic
+- **Intelligent Chunking**: RecursiveCharacterTextSplitter untuk smart splitting
+- **Overlap Handling**: 500 character overlap untuk context preservation
+- **Size Optimization**: 8000 character chunks untuk optimal processing
+- **Vector Storage**: FAISS untuk efficient similarity search
+
+---
+
+# 4. CODE ARCHITECTURE ANALYSIS
+
+## Design Patterns
+
+### 1. Pipeline Pattern
+- **Parsing**: PDF text extraction
+- **Chunking**: Text splitting untuk optimal processing
+- **Vectorization**: Embedding generation dan vector storage
+- **Retrieval**: Document retrieval berdasarkan similarity
+- **Generation**: Answer generation menggunakan LLM
+
+### 2. Chain of Responsibility
+- **Text Processing**: Sequential text processing steps
+- **Vector Operations**: Sequential vector operations
+- **RAG Workflow**: Sequential RAG workflow steps
+
+### 3. Strategy Pattern
+- **Text Splitting**: Different splitting strategies
+- **Embedding Models**: Different embedding models
+- **Vector Stores**: Different vector store implementations
+
+## RAG Pipeline Architecture
+
+### 1. Document Processing
+- **PDF Parsing**: Extract text dari PDF files
+- **Text Chunking**: Split text menjadi manageable chunks
+- **Chunk Optimization**: Optimize chunk size dan overlap
+
+### 2. Vectorization
+- **Embedding Generation**: Generate embeddings untuk text chunks
+- **Vector Storage**: Store embeddings dalam FAISS vector store
+- **Index Creation**: Create searchable index
+
+### 3. Retrieval
+- **Similarity Search**: Search relevant documents berdasarkan similarity
+- **Top-K Retrieval**: Retrieve top-K relevant documents
+- **Context Preparation**: Prepare context untuk generation
+
+### 4. Generation
+- **Prompt Engineering**: Create context-aware prompts
+- **LLM Generation**: Generate answers menggunakan LLM
+- **Output Processing**: Process dan format outputs
+
+## Error Handling Strategy
+
+### Parsing Errors
+- **PDF Processing**: Handle PDF parsing errors
+- **Text Extraction**: Handle text extraction errors
+- **File Format**: Handle unsupported file formats
+
+### Vectorization Errors
+- **Chunking**: Handle text chunking errors
+- **Embedding**: Handle embedding generation errors
+- **Vector Store**: Handle vector store creation errors
+
+### Retrieval Errors
+- **Vector Store**: Handle vector store access errors
+- **Document Retrieval**: Handle document retrieval errors
+- **Similarity Search**: Handle similarity search errors
+
+### Generation Errors
+- **LLM Processing**: Handle LLM processing errors
+- **Chain Execution**: Handle RAG chain execution errors
+- **Output Parsing**: Handle output parsing errors
+
+## Performance Considerations
+
+### Text Processing
+- **Chunk Size**: Optimize chunk size untuk performance
+- **Overlap**: Balance overlap untuk context preservation
+- **Memory Usage**: Optimize memory usage untuk large documents
+
+### Vector Operations
+- **Embedding Generation**: Efficient embedding generation
+- **Vector Storage**: Efficient vector storage
+- **Similarity Search**: Fast similarity search
+
+### RAG Performance
+- **Retrieval Speed**: Fast document retrieval
+- **Generation Speed**: Fast answer generation
+- **Context Quality**: High-quality context retrieval
+
+## Scalability
+
+### Document Processing
+- **Large Documents**: Handle large PDF documents
+- **Multiple Documents**: Support multiple documents
+- **Batch Processing**: Batch document processing
+
+### Vector Operations
+- **Vector Store Size**: Handle large vector stores
+- **Search Performance**: Maintain search performance
+- **Memory Management**: Efficient memory management
+
+### RAG Operations
+- **Concurrent Queries**: Handle multiple concurrent queries
+- **Response Time**: Maintain fast response times
+- **Quality**: Maintain answer quality
+
+---
+
+# 5. INTEGRATION POINTS
+
+## Service Dependencies
+- **Memory Services**: Vector store storage dan retrieval
+- **Agent Services**: RAG operations melalui agent
+- **File Services**: PDF file handling
+
+## External Dependencies
+- **PyMuPDF (fitz)**: PDF parsing
+- **LangChain**: RAG framework
+- **FAISS**: Vector storage
+- **Google Generative AI**: Embeddings dan LLM
+- **Python-dotenv**: Environment variable management
+
+## API Integration
+- **FastAPI**: Web framework integration
+- **File Upload**: PDF file upload handling
+- **JSON**: Data serialization
+- **Streaming**: Stream processing untuk large files
+
+---
+
+# 6. TESTING CONSIDERATIONS
+
+## Unit Testing
+- **PDF Parsing**: Test PDF parsing functionality
+- **Text Chunking**: Test text chunking functionality
+- **Vectorization**: Test vectorization functionality
+- **Retrieval**: Test document retrieval functionality
+- **Generation**: Test answer generation functionality
+
+## Integration Testing
+- **RAG Pipeline**: Test complete RAG pipeline
+- **Vector Store**: Test vector store operations
+- **LLM Integration**: Test LLM integration
+- **Error Handling**: Test error scenarios
+
+## Mock Requirements
+- **PDF Files**: Mock PDF files untuk testing
+- **Vector Stores**: Mock vector stores
+- **LLM**: Mock LLM responses
+- **Embeddings**: Mock embedding generation
+
+---
+
+# 7. MAINTENANCE NOTES
+
+## Code Quality
+- **Type Hints**: Comprehensive type annotations
+- **Error Handling**: Robust error handling
+- **Documentation**: Inline documentation
+- **Logging**: Detailed logging untuk debugging
+
+## Extensibility
+- **New Parsers**: Easy to add new document parsers
+- **New Embeddings**: Easy to add new embedding models
+- **New Vector Stores**: Easy to add new vector stores
+- **New LLMs**: Easy to add new LLM models
+
+## Monitoring
+- **Processing Time**: Monitor document processing time
+- **Vector Operations**: Monitor vector operations
+- **RAG Performance**: Monitor RAG performance
+- **Error Rates**: Monitor error rates
+
+---
+
+# 8. KNOWN ISSUES & IMPROVEMENTS
+
+## Current Issues
+1. **Limited PDF Support**: Hanya support PDF files
+2. **Basic Chunking**: Basic text chunking strategy
+3. **Single Embedding Model**: Hanya Google Generative AI embeddings
+4. **Basic Error Handling**: Could be more comprehensive
+
+## Suggested Improvements
+1. **Multiple Formats**: Support untuk multiple document formats
+2. **Advanced Chunking**: More sophisticated chunking strategies
+3. **Multiple Embeddings**: Support untuk multiple embedding models
+4. **Better Error Handling**: More comprehensive error handling
+5. **Performance Optimization**: Better performance untuk large documents
+6. **Caching**: Implement caching untuk better performance
+7. **Monitoring**: Better monitoring dan logging
+
+---
+
+# 9. VERSION HISTORY
+
+## Version 1.0
+- Initial implementation
+- PDF parsing dengan PyMuPDF
+- Text chunking dengan RecursiveCharacterTextSplitter
+- Vectorization dengan Google Generative AI embeddings
+- FAISS vector store
+- RAG pipeline dengan LangChain
+- Question answering functionality
+
+---
+
+**Last Updated**: $(date)
+**RAG Services Code Documentation Version**: 1.0
+**API Version**: 1.0

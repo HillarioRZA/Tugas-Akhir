@@ -1,0 +1,712 @@
+# Data Whisperer Memory Services - Code Documentation
+# ==================================================
+
+## Overview
+Dokumentasi ini menjelaskan struktur kode, fungsi, dan implementasi detail dari Memory Services dalam Data Whisperer.
+Memory Services mengimplementasikan sistem memori dua tingkat: Short Term Memory (STM) dan Long Term Memory (LTM) untuk manajemen session dan persistence data.
+
+---
+
+# 1. MEMORY MANAGER MODULE
+## File: `backend/services/memory/memory_manager.py`
+
+### Purpose
+Modul yang mengelola Short Term Memory (STM) untuk session management. Menangani cache in-memory untuk vector stores dan chat memory dengan fallback ke Long Term Memory.
+
+### Imports
+```python
+from langchain.memory import ConversationBufferMemory
+from typing import Dict, Any
+from backend.services.memory import persistent_memory
+```
+
+### Global State Management
+```python
+_session_memory: Dict[str, Dict[str, Any]] = {}
+```
+**Purpose**: Global dictionary untuk menyimpan session data dalam memory. Key adalah session_id, value adalah dictionary dengan session data.
+
+### Session Data Structure
+```python
+{
+  "active_vector_store": None,  # Vector store untuk RAG operations
+  "chat_memory": None          # ConversationBufferMemory object
+}
+```
+
+---
+
+## Core Functions
+
+### `_get_session_data(session_id: str) -> Dict[str, Any]`
+**Purpose**: Internal function untuk mendapatkan atau membuat session data.
+
+**Parameters**:
+- `session_id` (str): Session ID untuk mengidentifikasi session
+
+**Process Flow**:
+1. **Check Existence**: Check jika session_id exists dalam `_session_memory`
+2. **Create Session**: Jika tidak ada, buat session data baru dengan default values
+3. **Return Data**: Return session data dictionary
+
+**Returns**: Dictionary dengan session data structure
+
+**Code Analysis**:
+```python
+def _get_session_data(session_id: str) -> Dict[str, Any]:
+    if session_id not in _session_memory:
+        _session_memory[session_id] = {
+            "active_vector_store": None,
+            "chat_memory": None
+        }
+    return _session_memory[session_id]
+```
+
+**Design Pattern**: Lazy initialization untuk session data
+
+---
+
+### `save_vector_store(session_id: str, vector_store: Any)`
+**Purpose**: Menyimpan vector store ke session memory untuk RAG operations.
+
+**Parameters**:
+- `session_id` (str): Session ID untuk mengidentifikasi session
+- `vector_store` (Any): Vector store object untuk disimpan
+
+**Process Flow**:
+1. **Get Session Data**: Ambil session data menggunakan `_get_session_data()`
+2. **Store Vector Store**: Simpan vector store ke session data
+3. **Log Operation**: Print confirmation message
+
+**Returns**: None
+
+**Code Analysis**:
+```python
+def save_vector_store(session_id: str, vector_store: Any):
+    session_data = _get_session_data(session_id)
+    session_data["active_vector_store"] = vector_store
+    print(f"--- Vector Store untuk sesi {session_id} disimpan ---")
+```
+
+**Usage**: Digunakan untuk menyimpan vector store hasil dari PDF indexing
+
+---
+
+### `get_vector_store(session_id: str) -> Any | None`
+**Purpose**: Mengambil vector store dari session memory.
+
+**Parameters**:
+- `session_id` (str): Session ID untuk mengidentifikasi session
+
+**Process Flow**:
+1. **Get Session Data**: Ambil session data menggunakan `_get_session_data()`
+2. **Return Vector Store**: Return vector store atau None jika tidak ada
+
+**Returns**: Vector store object atau None
+
+**Code Analysis**:
+```python
+def get_vector_store(session_id: str) -> Any | None:
+    session_data = _get_session_data(session_id)
+    return session_data.get("active_vector_store")
+```
+
+**Usage**: Digunakan untuk mengambil vector store untuk RAG operations
+
+---
+
+### `clear_vector_store(session_id: str)`
+**Purpose**: Menghapus vector store dari session memory.
+
+**Parameters**:
+- `session_id` (str): Session ID untuk mengidentifikasi session
+
+**Process Flow**:
+1. **Check Session Exists**: Check jika session exists dalam `_session_memory`
+2. **Clear Vector Store**: Set active_vector_store ke None
+3. **Log Operation**: Print confirmation message
+
+**Returns**: None
+
+**Code Analysis**:
+```python
+def clear_vector_store(session_id: str):
+    if session_id in _session_memory:
+        _session_memory[session_id]["active_vector_store"] = None
+        print(f"--- Vector Store untuk sesi {session_id} dihapus ---")
+```
+
+**Usage**: Digunakan untuk cleanup vector store setelah RAG operations
+
+---
+
+### `get_or_create_memory(session_id: str) -> ConversationBufferMemory`
+**Purpose**: Mendapatkan atau membuat ConversationBufferMemory untuk session. Mengimplementasikan cache dengan fallback ke LTM.
+
+**Parameters**:
+- `session_id` (str): Session ID untuk mengidentifikasi session
+
+**Process Flow**:
+1. **Get Session Data**: Ambil session data menggunakan `_get_session_data()`
+2. **Check Cache**: Check jika chat_memory exists dalam cache
+3. **Cache Miss**: Jika tidak ada, load dari LTM menggunakan `persistent_memory.load_chat_history()`
+4. **Cache Hit**: Jika ada, return cached memory
+5. **Update Cache**: Simpan loaded memory ke cache
+
+**Returns**: ConversationBufferMemory object
+
+**Code Analysis**:
+```python
+def get_or_create_memory(session_id: str) -> ConversationBufferMemory:
+    session_data = _get_session_data(session_id)
+
+    if session_data.get("chat_memory") is None:
+        print(f"--- [STM] Memori chat tidak ada di cache. Mencoba memuat dari LTM... ---")
+        
+        ltm_memory = persistent_memory.load_chat_history(session_id)
+        
+        session_data["chat_memory"] = ltm_memory
+        return ltm_memory
+    else:
+        print(f"--- [STM] Memori chat ditemukan di cache. ---")
+        return session_data["chat_memory"]
+```
+
+**Design Pattern**: Cache-aside pattern dengan fallback ke persistent storage
+
+**Integration**: Menggunakan `persistent_memory.load_chat_history()` untuk LTM fallback
+
+---
+
+### `clear_chat_memory(session_id: str)`
+**Purpose**: Menghapus chat memory dari session cache.
+
+**Parameters**:
+- `session_id` (str): Session ID untuk mengidentifikasi session
+
+**Process Flow**:
+1. **Check Session Exists**: Check jika session exists dalam `_session_memory`
+2. **Clear Chat Memory**: Set chat_memory ke None
+3. **Log Operation**: Print confirmation message
+
+**Returns**: None
+
+**Code Analysis**:
+```python
+def clear_chat_memory(session_id: str):
+    if session_id in _session_memory:
+        _session_memory[session_id]["chat_memory"] = None
+        print(f"--- [STM] Memori Chat untuk sesi {session_id} dihapus dari cache ---")
+```
+
+**Usage**: Digunakan untuk cleanup chat memory dari cache
+
+---
+
+### `clear_all_memory_for_session(session_id: str)`
+**Purpose**: Menghapus semua memory untuk session, termasuk STM dan LTM.
+
+**Parameters**:
+- `session_id` (str): Session ID untuk mengidentifikasi session
+
+**Process Flow**:
+1. **Check Session Exists**: Check jika session exists dalam `_session_memory`
+2. **Clear STM**: Delete session dari `_session_memory`
+3. **Clear LTM**: Call `persistent_memory.clear_all_memory_for_session()`
+4. **Log Operation**: Print confirmation message
+
+**Returns**: None
+
+**Code Analysis**:
+```python
+def clear_all_memory_for_session(session_id: str):
+    if session_id in _session_memory:
+        del _session_memory[session_id]
+        print(f"--- [STM] SEMUA memori cache untuk sesi {session_id} dihapus ---")
+    else:
+        print(f"--- [STM] Tidak ada memori cache ditemukan untuk sesi {session_id} ---")
+        
+    persistent_memory.clear_all_memory_for_session(session_id)
+```
+
+**Integration**: Menggunakan `persistent_memory.clear_all_memory_for_session()` untuk LTM cleanup
+
+---
+
+# 2. PERSISTENT MEMORY MODULE
+## File: `backend/services/memory/persistent_memory.py`
+
+### Purpose
+Modul yang mengelola Long Term Memory (LTM) menggunakan TinyDB untuk persistent storage. Menangani model data, dataset paths, dan chat history dengan database persistence.
+
+### Imports
+```python
+import os, shutil
+from tinydb import TinyDB, Query
+from typing import Dict, Any, Optional
+from langchain.memory import ConversationBufferMemory
+from langchain.schema import messages_from_dict, messages_to_dict
+```
+
+### Database Configuration
+```python
+db = TinyDB('memory_db.json')
+Q = Query()
+
+model_registry = db.table('model_registry')
+dataset_registry = db.table('dataset_registry')
+chat_history = db.table('chat_history')
+```
+
+**Database Structure**:
+- **memory_db.json**: TinyDB database file
+- **model_registry**: Table untuk model data
+- **dataset_registry**: Table untuk dataset paths
+- **chat_history**: Table untuk chat history
+
+---
+
+## Model Management Functions
+
+### `save_model_data(session_id: str, model_name: str, metrics: dict, model_path: str, preprocessor_path: str)`
+**Purpose**: Menyimpan atau memperbarui data model ke database.
+
+**Parameters**:
+- `session_id` (str): Session ID untuk mengidentifikasi session
+- `model_name` (str): Nama model untuk identifikasi
+- `metrics` (dict): Model metrics (accuracy, precision, etc.)
+- `model_path` (str): Path ke model file
+- `preprocessor_path` (str): Path ke preprocessor file
+
+**Process Flow**:
+1. **Create Model Data**: Buat dictionary dengan model data
+2. **Upsert Operation**: Gunakan upsert untuk insert atau update
+3. **Log Operation**: Print confirmation message
+
+**Returns**: None
+
+**Code Analysis**:
+```python
+def save_model_data(session_id: str, model_name: str, metrics: dict, model_path: str, preprocessor_path: str):
+    model_data = {
+        "session_id": session_id,
+        "model_name": model_name,
+        "metrics": metrics,
+        "model_path": model_path,
+        "preprocessor_path": preprocessor_path
+    }
+
+    model_registry.upsert(model_data, (Q.session_id == session_id) & (Q.model_name == model_name))
+    print(f"--- [LTM] Data Model '{model_name}' disimpan ke DB untuk sesi {session_id} ---")
+```
+
+**Database Operation**: Upsert operation untuk insert atau update model data
+
+**Query Logic**: `(Q.session_id == session_id) & (Q.model_name == model_name)`
+
+---
+
+### `get_model_data(session_id: str, model_name: str) -> Optional[dict]`
+**Purpose**: Mengambil data model dari database.
+
+**Parameters**:
+- `session_id` (str): Session ID untuk mengidentifikasi session
+- `model_name` (str): Nama model untuk identifikasi
+
+**Process Flow**:
+1. **Validation**: Check jika model_name tidak empty
+2. **Database Query**: Query database menggunakan session_id dan model_name
+3. **Return Result**: Return model data atau None
+
+**Returns**: Dictionary dengan model data atau None
+
+**Code Analysis**:
+```python
+def get_model_data(session_id: str, model_name: str) -> Optional[dict]:
+    if not model_name:
+        return None
+    result = model_registry.get((Q.session_id == session_id) & (Q.model_name == model_name))
+    return result
+```
+
+**Query Logic**: `(Q.session_id == session_id) & (Q.model_name == model_name)`
+
+**Usage**: Digunakan untuk mengambil model data untuk prediction operations
+
+---
+
+## Dataset Management Functions
+
+### `save_dataset_path(session_id: str, dataset_name: str, dataset_path: str)`
+**Purpose**: Menyimpan atau memperbarui dataset path ke database.
+
+**Parameters**:
+- `session_id` (str): Session ID untuk mengidentifikasi session
+- `dataset_name` (str): Nama dataset untuk identifikasi
+- `dataset_path` (str): Path ke dataset file
+
+**Process Flow**:
+1. **Create Dataset Data**: Buat dictionary dengan dataset data
+2. **Upsert Operation**: Gunakan upsert untuk insert atau update
+3. **Log Operation**: Print confirmation message
+
+**Returns**: None
+
+**Code Analysis**:
+```python
+def save_dataset_path(session_id: str, dataset_name: str, dataset_path: str):
+    dataset_data = {
+        "session_id": session_id,
+        "dataset_name": dataset_name, 
+        "path": dataset_path
+    }
+    dataset_registry.upsert(dataset_data, (Q.session_id == session_id) & (Q.dataset_name == dataset_name))
+    print(f"--- [LTM] Path Dataset '{dataset_name}' disimpan ke DB untuk sesi {session_id} ---")
+```
+
+**Database Operation**: Upsert operation untuk insert atau update dataset path
+
+**Query Logic**: `(Q.session_id == session_id) & (Q.dataset_name == dataset_name)`
+
+---
+
+### `get_dataset_path(session_id: str, dataset_name: str) -> Optional[dict]`
+**Purpose**: Mengambil dataset path dari database.
+
+**Parameters**:
+- `session_id` (str): Session ID untuk mengidentifikasi session
+- `dataset_name` (str): Nama dataset untuk identifikasi
+
+**Process Flow**:
+1. **Validation**: Check jika dataset_name tidak empty
+2. **Database Query**: Query database menggunakan session_id dan dataset_name
+3. **Return Result**: Return dataset data atau None
+
+**Returns**: Dictionary dengan dataset data atau None
+
+**Code Analysis**:
+```python
+def get_dataset_path(session_id: str, dataset_name: str) -> Optional[dict]:
+    if not dataset_name:
+        return None
+    result = dataset_registry.get((Q.session_id == session_id) & (Q.dataset_name == dataset_name))
+    return result
+```
+
+**Query Logic**: `(Q.session_id == session_id) & (Q.dataset_name == dataset_name)`
+
+**Usage**: Digunakan untuk mengambil dataset path untuk file operations
+
+---
+
+## Chat History Management Functions
+
+### `save_chat_history(session_id: str, memory_object: ConversationBufferMemory)`
+**Purpose**: Menyimpan chat history ke database.
+
+**Parameters**:
+- `session_id` (str): Session ID untuk mengidentifikasi session
+- `memory_object` (ConversationBufferMemory): LangChain memory object
+
+**Process Flow**:
+1. **Serialize Messages**: Konversi messages ke dictionary format
+2. **Database Upsert**: Upsert chat history ke database
+3. **Log Operation**: Print confirmation message
+
+**Returns**: None
+
+**Code Analysis**:
+```python
+def save_chat_history(session_id: str, memory_object: ConversationBufferMemory):
+    messages_dict = messages_to_dict(memory_object.chat_memory.messages)
+    
+    chat_history.upsert(
+        {"session_id": session_id, "messages": messages_dict},
+        Q.session_id == session_id
+    )
+    print(f"--- [LTM] Riwayat Chat disimpan ke DB untuk sesi {session_id} ---")
+```
+
+**Serialization**: Menggunakan `messages_to_dict()` untuk konversi LangChain messages
+
+**Database Operation**: Upsert operation untuk insert atau update chat history
+
+---
+
+### `load_chat_history(session_id: str) -> ConversationBufferMemory`
+**Purpose**: Memuat chat history dari database.
+
+**Parameters**:
+- `session_id` (str): Session ID untuk mengidentifikasi session
+
+**Process Flow**:
+1. **Create Memory Object**: Buat ConversationBufferMemory baru
+2. **Database Query**: Query chat history dari database
+3. **Deserialize Messages**: Konversi messages dari dictionary ke LangChain format
+4. **Error Handling**: Handle errors dengan graceful degradation
+5. **Return Memory**: Return memory object
+
+**Returns**: ConversationBufferMemory object
+
+**Code Analysis**:
+```python
+def load_chat_history(session_id: str) -> ConversationBufferMemory:
+    memory = ConversationBufferMemory(
+        memory_key="chat_history",
+        return_messages=True
+    )
+    
+    data = chat_history.get(Q.session_id == session_id)
+    
+    if data and data.get('messages'):
+        try:
+            messages = messages_from_dict(data['messages'])
+            memory.chat_memory.messages = messages
+            print(f"--- [LTM] Riwayat Chat dimuat dari DB untuk sesi {session_id} ---")
+        except Exception as e:
+            print(f"Error memuat riwayat chat dari LTM: {e}. Membuat memori baru.")
+    else:
+        print(f"--- [LTM] Tidak ada riwayat chat LTM ditemukan. Membuat memori baru untuk sesi {session_id} ---")
+            
+    return memory
+```
+
+**Deserialization**: Menggunakan `messages_from_dict()` untuk konversi dari dictionary
+
+**Error Handling**: Graceful degradation dengan fallback ke empty memory
+
+**Database Query**: `Q.session_id == session_id`
+
+---
+
+## Cleanup Functions
+
+### `clear_all_memory_for_session(session_id: str)`
+**Purpose**: Menghapus semua memory untuk session, termasuk database records dan physical files.
+
+**Parameters**:
+- `session_id` (str): Session ID untuk mengidentifikasi session
+
+**Process Flow**:
+1. **Database Cleanup**: Hapus records dari semua tables
+2. **Physical File Cleanup**: Hapus model dan upload directories
+3. **Error Handling**: Handle errors dengan logging
+4. **Log Operations**: Print confirmation messages
+
+**Returns**: None
+
+**Code Analysis**:
+```python
+def clear_all_memory_for_session(session_id: str):
+    print(f"--- [LTM] Memulai pembersihan total LTM untuk sesi {session_id} ---")
+
+    # Database cleanup
+    model_registry.remove(Q.session_id == session_id)
+    dataset_registry.remove(Q.session_id == session_id)
+    chat_history.remove(Q.session_id == session_id)
+    print(f"--- [LTM] Data TinyDB untuk sesi {session_id} dihapus ---")
+
+    # Physical file cleanup
+    session_model_dir = os.path.join("saved_models", session_id)
+    session_upload_dir = os.path.join("user_uploads", session_id)
+
+    try:
+        if os.path.exists(session_model_dir):
+            shutil.rmtree(session_model_dir)
+            print(f"--- [LTM] Folder model fisik '{session_model_dir}' dihapus ---")
+    except Exception as e:
+        print(f"Error menghapus folder model LTM: {e}")
+
+    try:
+        if os.path.exists(session_upload_dir):
+            shutil.rmtree(session_upload_dir)
+            print(f"--- [LTM] Folder upload fisik '{session_upload_dir}' dihapus ---")
+    except Exception as e:
+        print(f"Error menghapus folder upload LTM: {e}")
+```
+
+**Database Operations**: Remove operations untuk semua tables
+
+**File Operations**: `shutil.rmtree()` untuk recursive directory deletion
+
+**Error Handling**: Try-catch blocks untuk file operations
+
+---
+
+# 3. CODE ARCHITECTURE ANALYSIS
+
+## Design Patterns
+
+### 1. Two-Tier Memory Architecture
+- **Short Term Memory (STM)**: In-memory cache untuk fast access
+- **Long Term Memory (LTM)**: Persistent storage untuk data persistence
+- **Cache-Aside Pattern**: STM sebagai cache dengan fallback ke LTM
+
+### 2. Session-Based Architecture
+- **Session Isolation**: Setiap session memiliki data terpisah
+- **Session Management**: Centralized session management
+- **Data Persistence**: Session data persisted across requests
+
+### 3. Repository Pattern
+- **Data Access Layer**: Abstracted data access melalui functions
+- **Database Operations**: Encapsulated database operations
+- **File Operations**: Encapsulated file operations
+
+## Memory Management Strategy
+
+### Short Term Memory (STM)
+- **Purpose**: Fast access untuk frequently used data
+- **Storage**: In-memory dictionary
+- **Lifecycle**: Session-based, cleared on session end
+- **Data Types**: Vector stores, chat memory
+
+### Long Term Memory (LTM)
+- **Purpose**: Persistent storage untuk data persistence
+- **Storage**: TinyDB database + physical files
+- **Lifecycle**: Persistent across sessions
+- **Data Types**: Model data, dataset paths, chat history
+
+### Cache Strategy
+- **Cache Hit**: Return data dari STM
+- **Cache Miss**: Load dari LTM dan update STM
+- **Cache Invalidation**: Manual cleanup atau session end
+
+## Error Handling Strategy
+
+### Database Operations
+- **Upsert Operations**: Safe insert/update operations
+- **Query Operations**: Safe query operations dengan null checks
+- **Error Recovery**: Graceful degradation untuk database errors
+
+### File Operations
+- **Directory Operations**: Safe directory creation dan deletion
+- **Path Validation**: Check path existence sebelum operations
+- **Error Recovery**: Try-catch blocks untuk file operations
+
+### Memory Operations
+- **Session Validation**: Check session existence sebelum operations
+- **Data Validation**: Validate data sebelum storage
+- **Error Recovery**: Graceful degradation untuk memory errors
+
+## Performance Considerations
+
+### Memory Usage
+- **Session Isolation**: Prevent memory leaks dengan session cleanup
+- **Data Size**: Monitor data size untuk large sessions
+- **Cache Management**: Efficient cache management
+- **Cleanup**: Automatic cleanup mechanisms
+
+### Database Performance
+- **Indexing**: TinyDB automatic indexing
+- **Query Optimization**: Efficient query patterns
+- **Data Serialization**: Efficient serialization/deserialization
+- **File Operations**: Efficient file operations
+
+### Scalability
+- **Session Management**: Efficient session management
+- **Data Persistence**: Scalable data persistence
+- **Memory Management**: Scalable memory management
+- **File Management**: Scalable file management
+
+---
+
+# 4. INTEGRATION POINTS
+
+## Service Dependencies
+- **LangChain**: Memory management dan message serialization
+- **TinyDB**: Database operations
+- **File System**: Physical file operations
+- **Agent Services**: Memory integration untuk agent operations
+
+## External Dependencies
+- **TinyDB**: Lightweight database
+- **LangChain**: Memory management framework
+- **OS/Shutil**: File system operations
+- **Typing**: Type hints
+
+## API Integration
+- **Session Management**: Session-based memory management
+- **Data Persistence**: Persistent data storage
+- **Memory Operations**: Memory read/write operations
+- **Cleanup Operations**: Memory cleanup operations
+
+---
+
+# 5. TESTING CONSIDERATIONS
+
+## Unit Testing
+- **Function Testing**: Test individual memory functions
+- **Database Operations**: Test database operations
+- **File Operations**: Test file operations
+- **Error Handling**: Test error scenarios
+
+## Integration Testing
+- **Memory Flow**: Test STM-LTM integration
+- **Session Management**: Test session lifecycle
+- **Data Persistence**: Test data persistence
+- **Cleanup Operations**: Test cleanup operations
+
+## Mock Requirements
+- **Database Operations**: Mock TinyDB operations
+- **File Operations**: Mock file system operations
+- **LangChain Operations**: Mock LangChain memory operations
+- **Session Management**: Mock session management
+
+---
+
+# 6. MAINTENANCE NOTES
+
+## Code Quality
+- **Type Hints**: Comprehensive type annotations
+- **Error Handling**: Robust error handling
+- **Logging**: Detailed logging untuk debugging
+- **Documentation**: Inline documentation
+
+## Extensibility
+- **New Data Types**: Easy to add new data types
+- **New Operations**: Easy to add new operations
+- **New Storage**: Easy to add new storage types
+- **New Integrations**: Easy to add new integrations
+
+## Monitoring
+- **Memory Usage**: Monitor memory consumption
+- **Database Performance**: Monitor database performance
+- **File Operations**: Monitor file operations
+- **Session Activity**: Monitor session activity
+
+---
+
+# 7. KNOWN ISSUES & IMPROVEMENTS
+
+## Current Issues
+1. **Memory Leaks**: Potential memory leaks dengan large sessions
+2. **Database Performance**: TinyDB performance dengan large datasets
+3. **File Cleanup**: Manual file cleanup required
+4. **Error Recovery**: Limited error recovery mechanisms
+
+## Suggested Improvements
+1. **Memory Optimization**: Better memory management
+2. **Database Optimization**: Database performance optimization
+3. **Automatic Cleanup**: Automatic cleanup mechanisms
+4. **Error Recovery**: Better error recovery mechanisms
+5. **Monitoring**: Better monitoring dan logging
+6. **Scalability**: Better scalability mechanisms
+7. **Security**: Better security mechanisms
+
+---
+
+# 8. VERSION HISTORY
+
+## Version 1.0
+- Initial implementation
+- Two-tier memory architecture
+- Session management
+- Database persistence
+- File management
+- Memory operations
+
+---
+
+**Last Updated**: $(date)
+**Memory Services Code Documentation Version**: 1.0
+**API Version**: 1.0

@@ -1,0 +1,535 @@
+# Data Whisperer API Documentation
+# =================================
+
+## Overview
+Data Whisperer adalah API untuk analisis data dan interaksi dengan AI Agent yang menyediakan berbagai fitur untuk:
+- Exploratory Data Analysis (EDA)
+- Machine Learning Pipeline
+- AI Agent untuk interaksi natural language
+- Visualisasi data
+
+## Base URL
+```
+http://localhost:8000
+```
+
+## Authentication
+API ini tidak memerlukan autentikasi khusus, namun menggunakan Session ID untuk tracking interaksi.
+
+---
+
+# 1. ROOT ENDPOINT
+
+## GET /
+**Deskripsi:** Endpoint utama untuk mengecek status server
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "message": "Selamat datang di server Data Whisperer!"
+}
+```
+
+---
+
+# 2. AGENT ENDPOINTS
+**Base Path:** `/api/agent`
+
+## POST /api/agent/execute
+**Deskripsi:** Menjalankan AI Agent untuk menganalisis data dan menjawab pertanyaan natural language
+
+**Headers:**
+- `X-Session-ID` (optional): Session ID untuk tracking interaksi
+
+**Request Body (multipart/form-data):**
+- `file` (optional): File CSV atau PDF untuk dianalisis
+- `prompt` (required): Pertanyaan atau instruksi dalam bahasa natural
+
+**Response:**
+```json
+{
+  "session_id": "uuid-string",
+  "response": "AI Agent response",
+  "tools_used": ["tool1", "tool2"],
+  "data_insights": {...}
+}
+```
+
+**Error Responses:**
+- `400`: Format file tidak valid
+- `500`: Error dalam pemrosesan
+
+**Contoh Penggunaan:**
+```bash
+curl -X POST "http://localhost:8000/api/agent/execute" \
+  -H "X-Session-ID: your-session-id" \
+  -F "file=@data.csv" \
+  -F "prompt=Analisis data ini dan berikan insight"
+```
+
+## POST /api/agent/custom-visualize
+**Deskripsi:** Membuat visualisasi kustom berdasarkan prompt natural language
+
+**Headers:**
+- `X-Session-ID` (optional): Session ID untuk tracking
+
+**Request Body (multipart/form-data):**
+- `file` (required): File CSV untuk visualisasi
+- `prompt` (required): Deskripsi visualisasi yang diinginkan
+
+**Response:**
+```json
+{
+  "plan": {
+    "plot_type": "scatter",
+    "x_col": "column1",
+    "y_col": "column2",
+    "hue_col": "category"
+  },
+  "summary": "Interpretasi visualisasi",
+  "image_base64": "base64-encoded-image",
+  "image_format": "png",
+  "session_id": "uuid-string"
+}
+```
+
+**Error Responses:**
+- `400`: File CSV dibutuhkan atau format tidak valid
+- `500`: Error dalam pembuatan plot
+
+---
+
+# 3. EDA (EXPLORATORY DATA ANALYSIS) ENDPOINTS
+**Base Path:** `/api/eda`
+
+## POST /api/eda/describe
+**Deskripsi:** Mendapatkan statistik deskriptif dari dataset CSV
+
+**Request Body (multipart/form-data):**
+- `file` (required): File CSV
+
+**Response:**
+```json
+{
+  "filename": "data.csv",
+  "statistics": {
+    "shape": [1000, 10],
+    "columns": ["col1", "col2", ...],
+    "dtypes": {...},
+    "summary": {...}
+  }
+}
+```
+
+**Error Responses:**
+- `400`: Format file tidak valid
+- `500`: Gagal memproses file
+
+## POST /api/eda/correlation-heatmap
+**Deskripsi:** Membuat heatmap korelasi antar variabel numerik
+
+**Request Body (multipart/form-data):**
+- `file` (required): File CSV
+
+**Response:** PNG image stream
+
+**Error Responses:**
+- `400`: Format file tidak valid
+- `500`: Gagal membuat heatmap
+
+## POST /api/eda/histogram
+**Deskripsi:** Membuat histogram untuk kolom numerik tertentu
+
+**Request Body (multipart/form-data):**
+- `file` (required): File CSV
+- `column_name` (required): Nama kolom untuk histogram
+
+**Response:** PNG image stream
+
+**Error Responses:**
+- `400`: Format file tidak valid atau kolom bukan numerik
+- `404`: Kolom tidak ditemukan
+- `500`: Gagal membuat histogram
+
+## POST /api/eda/missing-value-heatmap
+**Deskripsi:** Membuat heatmap untuk menunjukkan missing values dalam dataset
+
+**Request Body (multipart/form-data):**
+- `file` (required): File CSV
+
+**Response:** PNG image stream
+
+**Error Responses:**
+- `400`: Format file tidak valid
+- `500`: Gagal membuat heatmap
+
+## POST /api/eda/outliers
+**Deskripsi:** Mendeteksi outliers dalam kolom numerik
+
+**Request Body (multipart/form-data):**
+- `file` (required): File CSV
+- `column_name` (required): Nama kolom untuk deteksi outliers
+
+**Response:**
+```json
+{
+  "outliers_count": 15,
+  "outliers_percentage": 1.5,
+  "outlier_values": [value1, value2, ...],
+  "outlier_indices": [index1, index2, ...]
+}
+```
+
+**Error Responses:**
+- `400`: Format file tidak valid atau kolom bukan numerik
+- `404`: Kolom tidak ditemukan
+- `500`: Gagal mendeteksi outliers
+
+## POST /api/eda/skewness
+**Deskripsi:** Menghitung skewness untuk semua kolom numerik
+
+**Request Body (multipart/form-data):**
+- `file` (required): File CSV
+
+**Response:**
+```json
+{
+  "skewness": {
+    "column1": 0.5,
+    "column2": -1.2,
+    ...
+  }
+}
+```
+
+**Error Responses:**
+- `400`: Format file tidak valid
+- `500`: Gagal menghitung skewness
+
+## POST /api/eda/categorical-insights
+**Deskripsi:** Menganalisis kolom kategorikal untuk mendapatkan insights
+
+**Request Body (multipart/form-data):**
+- `file` (required): File CSV
+- `column_name` (required): Nama kolom kategorikal
+
+**Response:**
+```json
+{
+  "unique_count": 5,
+  "value_counts": {...},
+  "most_common": "value1",
+  "least_common": "value2",
+  "missing_count": 0
+}
+```
+
+**Error Responses:**
+- `400`: Format file tidak valid atau kolom terlalu numerik
+- `404`: Kolom tidak ditemukan
+- `500`: Gagal menganalisis kolom
+
+## POST /api/eda/target-analysis
+**Deskripsi:** Menganalisis variabel target untuk machine learning
+
+**Request Body (multipart/form-data):**
+- `file` (required): File CSV
+- `target_column` (required): Nama kolom target
+
+**Response:**
+```json
+{
+  "target_type": "binary",
+  "class_distribution": {...},
+  "missing_targets": 0,
+  "target_insights": {...}
+}
+```
+
+**Error Responses:**
+- `400`: Format file tidak valid
+- `404`: Kolom target tidak ditemukan
+- `500`: Gagal menganalisis target
+
+## POST /api/eda/target-feature-plot
+**Deskripsi:** Membuat visualisasi hubungan antara target dan feature
+
+**Request Body (multipart/form-data):**
+- `file` (required): File CSV
+- `target_column` (required): Nama kolom target
+- `feature_column` (required): Nama kolom feature
+
+**Response:** PNG image stream
+
+**Error Responses:**
+- `400`: Format file tidak valid
+- `404`: Kolom tidak ditemukan
+- `500`: Gagal membuat visualisasi
+
+## POST /api/eda/full-profile
+**Deskripsi:** Membuat profil data lengkap dengan semua analisis
+
+**Request Body (multipart/form-data):**
+- `file` (required): File CSV
+
+**Response:**
+```json
+{
+  "data_overview": {...},
+  "column_analysis": {...},
+  "correlation_matrix": {...},
+  "missing_data_analysis": {...},
+  "outlier_analysis": {...},
+  "recommendations": [...]
+}
+```
+
+**Error Responses:**
+- `400`: Format file tidak valid
+- `500`: Gagal membuat profil data
+
+## POST /api/eda/vif
+**Deskripsi:** Menghitung Variance Inflation Factor untuk deteksi multikolinearitas
+
+**Request Body (multipart/form-data):**
+- `file` (required): File CSV
+
+**Response:**
+```json
+{
+  "vif_results": {
+    "feature1": 1.2,
+    "feature2": 3.5,
+    ...
+  }
+}
+```
+
+**Error Responses:**
+- `400`: Format file tidak valid
+- `500`: Gagal menghitung VIF
+
+---
+
+# 4. MACHINE LEARNING ENDPOINTS
+**Base Path:** `/api/ml`
+
+## POST /api/ml/run-pipeline
+**Deskripsi:** Menjalankan pipeline machine learning lengkap
+
+**Request Body (multipart/form-data):**
+- `file` (required): File CSV dengan data training
+- `target_column` (required): Nama kolom target
+
+**Response:**
+```json
+{
+  "message": "Pipeline ML berhasil dijalankan.",
+  "problem_type_detected": "classification",
+  "model_trained": "RandomForestClassifier",
+  "evaluation_metrics": {
+    "accuracy": 0.85,
+    "precision": 0.82,
+    "recall": 0.80,
+    "f1_score": 0.81
+  }
+}
+```
+
+**Error Responses:**
+- `400`: Format file tidak valid
+- `404`: Kolom target tidak ditemukan
+- `500`: Error dalam pipeline ML
+
+## POST /api/ml/predict
+**Deskripsi:** Membuat prediksi menggunakan model yang sudah dilatih
+
+**Request Body (JSON):**
+```json
+{
+  "feature1": "value1",
+  "feature2": "value2",
+  ...
+}
+```
+
+**Response:**
+```json
+{
+  "prediction": "predicted_value",
+  "confidence": 0.85,
+  "prediction_probability": {...}
+}
+```
+
+**Error Responses:**
+- `400`: Model belum dilatih atau data tidak lengkap
+- `500`: Error dalam prediksi
+
+## POST /api/ml/run-tuned-pipeline
+**Deskripsi:** Menjalankan pipeline ML dengan hyperparameter tuning
+
+**Request Body (multipart/form-data):**
+- `file` (required): File CSV dengan data training
+- `target_column` (required): Nama kolom target
+
+**Response:**
+```json
+{
+  "message": "Pipeline ML dengan hyperparameter tuning berhasil dijalankan.",
+  "problem_type_detected": "classification",
+  "model_trained": "RandomForestClassifier",
+  "best_params_found": {...},
+  "evaluation_metrics": {...}
+}
+```
+
+**Error Responses:**
+- `400`: Format file tidak valid
+- `404`: Kolom target tidak ditemukan
+- `500`: Error dalam pipeline tuning
+
+## GET /api/ml/feature-importance
+**Deskripsi:** Mendapatkan feature importance dari model yang sudah dilatih
+
+**Response:**
+```json
+{
+  "message": "10 fitur paling berpengaruh berhasil diekstrak.",
+  "feature_importances": [
+    {
+      "feature": "feature1",
+      "importance": 0.25
+    },
+    ...
+  ]
+}
+```
+
+**Error Responses:**
+- `400`: Model belum dilatih
+- `500`: Error dalam ekstraksi fitur
+
+## GET /api/ml/download/{model_name}
+**Deskripsi:** Download model artifacts (model atau preprocessor)
+
+**Path Parameters:**
+- `model_name`: Nama model yang akan didownload
+
+**Query Parameters:**
+- `type`: "model" atau "preprocessor"
+
+**Response:** File download
+
+**Error Responses:**
+- `400`: Tipe tidak valid
+- `404`: File tidak ditemukan
+
+---
+
+# 5. ERROR HANDLING
+
+## Standard Error Response Format
+```json
+{
+  "detail": "Error message description"
+}
+```
+
+## Common HTTP Status Codes
+- `200`: Success
+- `400`: Bad Request (invalid input)
+- `404`: Not Found (resource tidak ditemukan)
+- `500`: Internal Server Error
+
+---
+
+# 6. SESSION MANAGEMENT
+
+## Session ID
+- Session ID digunakan untuk tracking interaksi user
+- Dapat dikirim melalui header `X-Session-ID`
+- Jika tidak ada, akan dibuat session ID baru
+- Session ID digunakan untuk menyimpan file upload dan context
+
+## File Upload
+- File disimpan di direktori `user_uploads/{session_id}/`
+- Format yang didukung: CSV, PDF
+- File akan dihapus otomatis jika terjadi error
+
+---
+
+# 7. CONTOH PENGGUNAAN LENGKAP
+
+## Workflow Analisis Data
+1. **Upload Data**: POST `/api/eda/describe` untuk melihat overview data
+2. **EDA Analysis**: Gunakan berbagai endpoint EDA untuk analisis mendalam
+3. **ML Pipeline**: POST `/api/ml/run-pipeline` untuk training model
+4. **Prediction**: POST `/api/ml/predict` untuk prediksi data baru
+5. **AI Agent**: POST `/api/agent/execute` untuk interaksi natural language
+
+## Contoh cURL Commands
+
+### 1. Analisis Data Dasar
+```bash
+curl -X POST "http://localhost:8000/api/eda/describe" \
+  -F "file=@data.csv"
+```
+
+### 2. Machine Learning Pipeline
+```bash
+curl -X POST "http://localhost:8000/api/ml/run-pipeline" \
+  -F "file=@data.csv" \
+  -F "target_column=target"
+```
+
+### 3. AI Agent Interaction
+```bash
+curl -X POST "http://localhost:8000/api/agent/execute" \
+  -H "X-Session-ID: your-session-id" \
+  -F "file=@data.csv" \
+  -F "prompt=Analisis data ini dan berikan insight"
+```
+
+---
+
+# 8. CATATAN PENTING
+
+## File Format Requirements
+- **CSV**: Harus memiliki header dan format yang valid
+- **PDF**: Untuk analisis dokumen dengan AI Agent
+- **Encoding**: UTF-8 recommended
+
+## Performance Considerations
+- File besar mungkin memerlukan waktu processing lebih lama
+- Session timeout untuk file upload
+- Memory usage untuk dataset besar
+
+## Best Practices
+1. Selalu gunakan Session ID untuk tracking
+2. Validasi format file sebelum upload
+3. Handle error responses dengan proper error handling
+4. Gunakan appropriate content-type headers
+
+---
+
+# 9. CHANGELOG
+
+## Version 1.0
+- Initial release
+- EDA endpoints
+- ML pipeline endpoints
+- AI Agent integration
+- Session management
+- File upload support
+
+---
+
+# 10. SUPPORT
+
+Untuk pertanyaan atau masalah teknis, silakan hubungi tim development atau buat issue di repository project.
+
+**Last Updated:** $(date)
+**API Version:** 1.0
+**Documentation Version:** 1.0

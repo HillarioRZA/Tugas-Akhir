@@ -1,0 +1,396 @@
+# Data Whisperer Agent Services Documentation
+# ===========================================
+
+## Overview
+Dokumentasi ini menjelaskan layanan AI Agent yang menyediakan kemampuan analisis data menggunakan natural language processing. Agent services memungkinkan pengguna untuk berinteraksi dengan data menggunakan bahasa natural dan mendapatkan insight yang bermakna.
+
+## Base URL
+```
+http://localhost:8000/api/agent
+```
+
+## Authentication
+Tidak memerlukan autentikasi khusus, namun menggunakan Session ID untuk tracking interaksi dan memori.
+
+---
+
+# 1. AGENT EXECUTION ENDPOINT
+
+## POST /api/agent/execute
+**Deskripsi:** Menjalankan AI Agent untuk menganalisis data dan menjawab pertanyaan menggunakan natural language
+
+**Headers:**
+- `X-Session-ID` (optional): Session ID untuk tracking interaksi
+
+**Request Body (multipart/form-data):**
+- `file` (optional): File CSV atau PDF untuk dianalisis
+- `prompt` (required): Pertanyaan atau instruksi dalam bahasa natural
+
+**Response:**
+```json
+{
+  "session_id": "uuid-string",
+  "plan": {
+    "tool_name": "describe",
+    "reasoning": "User meminta analisis data",
+    "column_name": "age"
+  },
+  "summary": "AI interpretation of results",
+  "data": {...},
+  "image_base64": "base64-encoded-image" (optional),
+  "image_format": "png" (optional)
+}
+```
+
+**Error Responses:**
+- `400`: Format file tidak valid
+- `500`: Error dalam pemrosesan agent
+
+**Contoh Penggunaan:**
+```bash
+curl -X POST "http://localhost:8000/api/agent/execute" \
+  -H "X-Session-ID: your-session-id" \
+  -F "file=@data.csv" \
+  -F "prompt=Analisis data ini dan berikan insight tentang distribusi umur"
+```
+
+---
+
+# 2. CUSTOM VISUALIZATION ENDPOINT
+
+## POST /api/agent/custom-visualize
+**Deskripsi:** Membuat visualisasi kustom berdasarkan prompt natural language
+
+**Headers:**
+- `X-Session-ID` (optional): Session ID untuk tracking
+
+**Request Body (multipart/form-data):**
+- `file` (required): File CSV untuk visualisasi
+- `prompt` (required): Deskripsi visualisasi yang diinginkan
+
+**Response:**
+```json
+{
+  "plan": {
+    "plot_type": "scatter",
+    "x_col": "age",
+    "y_col": "income",
+    "hue_col": "gender",
+    "orientation": "v"
+  },
+  "summary": "Interpretasi visualisasi",
+  "image_base64": "base64-encoded-image",
+  "image_format": "png",
+  "session_id": "uuid-string"
+}
+```
+
+**Error Responses:**
+- `400`: File CSV dibutuhkan atau format tidak valid
+- `500`: Error dalam pembuatan plot
+
+---
+
+# 3. AVAILABLE TOOLS
+
+## EDA Tools
+### `describe`
+- **Purpose**: Ringkasan statistik (mean, std, etc.)
+- **Parameters**: Tidak ada
+- **Output**: Statistik deskriptif dataset
+
+### `correlation-heatmap`
+- **Purpose**: Visualisasi korelasi antar kolom
+- **Parameters**: Tidak ada
+- **Output**: PNG image stream
+
+### `histogram`
+- **Purpose**: Visualisasi distribusi satu kolom
+- **Parameters**: `column_name` (required)
+- **Output**: PNG image stream
+
+### `full-profile`
+- **Purpose**: Analisis umum atau profil lengkap dataset
+- **Parameters**: Tidak ada
+- **Output**: Comprehensive data profile
+
+### `outliers`
+- **Purpose**: Mendeteksi pencilan di satu kolom
+- **Parameters**: `column_name` (required)
+- **Output**: Outlier information
+
+### `skewness`
+- **Purpose**: Memeriksa kemiringan distribusi data
+- **Parameters**: Tidak ada
+- **Output**: Skewness data
+
+### `missing-value-heatmap`
+- **Purpose**: Visualisasi data yang hilang
+- **Parameters**: Tidak ada
+- **Output**: PNG image stream
+
+### `target-feature-plot`
+- **Purpose**: Visualisasi hubungan fitur dengan target
+- **Parameters**: `column_name` (feature), `target_column` (target)
+- **Output**: PNG image stream
+
+### `vif`
+- **Purpose**: Menghitung VIF untuk mendeteksi multikolinearitas
+- **Parameters**: Tidak ada
+- **Output**: VIF results
+
+### `target-analysis`
+- **Purpose**: Analisis variabel target
+- **Parameters**: `target_column` (required)
+- **Output**: Target analysis
+
+### `categorical-insights`
+- **Purpose**: Analisis kategorikal
+- **Parameters**: `column_name` (required)
+- **Output**: Categorical insights
+
+## Machine Learning Tools
+### `run_ml_pipeline`
+- **Purpose**: Melatih model prediksi pada dataset
+- **Parameters**: `target_column` (required), `columns_to_drop` (optional), `model_name` (optional)
+- **Output**: Model metrics dan artifacts
+
+### `run_tuned_ml_pipeline`
+- **Purpose**: Melatih model dengan hyperparameter tuning
+- **Parameters**: `target_column` (required), `model_name` (optional), `baseline_model_name` (optional)
+- **Output**: Tuned model metrics dan best parameters
+
+### `get_feature_importance`
+- **Purpose**: Mengetahui fitur paling penting dari model
+- **Parameters**: `model_name` (required)
+- **Output**: Feature importance data
+
+### `predict_new_data`
+- **Purpose**: Memprediksi hasil dari data baru
+- **Parameters**: `model_name` (required), `new_data` (required)
+- **Output**: Prediction results
+
+## RAG (Retrieval Augmented Generation) Tools
+### `index_pdf`
+- **Purpose**: Membaca dan mengindeks dokumen PDF
+- **Parameters**: Tidak ada (menggunakan file PDF yang diunggah)
+- **Output**: Indexing confirmation
+
+### `answer_pdf_question`
+- **Purpose**: Menjawab pertanyaan dari dokumen PDF
+- **Parameters**: `pdf_question` (required)
+- **Output**: Answer from PDF content
+
+## Conversational Tools
+### `conversational_recall`
+- **Purpose**: Menjawab pertanyaan kontekstual berdasarkan riwayat chat
+- **Parameters**: Tidak ada
+- **Output**: Conversational response
+
+---
+
+# 4. SESSION MANAGEMENT
+
+## Session ID
+- **Purpose**: Tracking interaksi user dan menyimpan context
+- **Generation**: UUID4 untuk setiap session baru
+- **Persistence**: Session data disimpan dalam memory system
+- **Usage**: Dikirim melalui header `X-Session-ID`
+
+## Memory System
+### Short Term Memory (STM)
+- **Purpose**: Menyimpan riwayat percakapan dalam session
+- **Storage**: In-memory untuk session aktif
+- **Content**: Input-output pairs dari interaksi
+
+### Long Term Memory (LTM)
+- **Purpose**: Menyimpan dataset dan model artifacts
+- **Storage**: Persistent storage dengan session-based organization
+- **Content**: File paths, model data, chat history
+
+## File Management
+- **Upload Directory**: `user_uploads/{session_id}/`
+- **Model Directory**: `saved_models/{session_id}/`
+- **Supported Formats**: CSV, PDF
+- **Cleanup**: Automatic cleanup on errors
+
+---
+
+# 5. WORKFLOW EXAMPLES
+
+## Basic Data Analysis Workflow
+1. **Upload Data**: POST `/api/agent/execute` dengan file CSV
+2. **Initial Analysis**: "Beri saya overview data ini"
+3. **Specific Analysis**: "Buat histogram untuk kolom age"
+4. **Deep Dive**: "Analisis outlier di kolom income"
+5. **Summary**: "Beri saya insight utama dari data ini"
+
+## Machine Learning Workflow
+1. **Data Preparation**: Upload dan analisis data
+2. **Model Training**: "Latih model untuk prediksi target"
+3. **Model Evaluation**: "Bagaimana performa model?"
+4. **Feature Analysis**: "Fitur apa yang paling penting?"
+5. **Prediction**: "Prediksi data baru: {data}"
+
+## PDF Analysis Workflow
+1. **PDF Upload**: Upload file PDF
+2. **Indexing**: "Baca dan siapkan dokumen ini"
+3. **Questioning**: "Apa kesimpulan utama dari laporan?"
+4. **Deep Questions**: "Jelaskan metodologi yang digunakan"
+
+---
+
+# 6. RESPONSE FORMATS
+
+## Standard Response Structure
+```json
+{
+  "session_id": "uuid-string",
+  "plan": {
+    "tool_name": "tool_name",
+    "reasoning": "explanation",
+    "parameters": {...}
+  },
+  "summary": "AI interpretation",
+  "data": {...},
+  "image_base64": "base64-string" (optional),
+  "image_format": "png" (optional)
+}
+```
+
+## Error Response Structure
+```json
+{
+  "error": "Error message",
+  "detail": "Detailed error information"
+}
+```
+
+---
+
+# 7. PROMPT EXAMPLES
+
+## Data Analysis Prompts
+- "Analisis data ini dan berikan insight"
+- "Buat histogram untuk kolom age"
+- "Deteksi outlier di kolom income"
+- "Beri saya profil lengkap dataset"
+- "Analisis korelasi antar variabel"
+
+## Machine Learning Prompts
+- "Latih model untuk prediksi target"
+- "Lakukan hyperparameter tuning pada model"
+- "Fitur apa yang paling penting?"
+- "Prediksi data baru: {data}"
+- "Bandingkan performa model"
+
+## Visualization Prompts
+- "Buat scatter plot antara age dan income"
+- "Visualisasi distribusi gender"
+- "Plot hubungan target dan fitur"
+- "Heatmap missing values"
+
+## PDF Analysis Prompts
+- "Baca dan siapkan dokumen ini"
+- "Apa kesimpulan utama dari laporan?"
+- "Jelaskan metodologi yang digunakan"
+- "Berikan ringkasan eksekutif"
+
+---
+
+# 8. ERROR HANDLING
+
+## Common Error Scenarios
+1. **File Not Found**: File tidak ditemukan di session
+2. **Invalid Format**: Format file tidak didukung
+3. **Missing Parameters**: Parameter yang dibutuhkan tidak ada
+4. **Model Not Found**: Model tidak ditemukan untuk prediksi
+5. **Processing Error**: Error dalam pemrosesan data
+
+## Error Recovery
+- **File Cleanup**: Otomatis hapus file jika error
+- **State Reset**: Proper cleanup untuk failed operations
+- **User Feedback**: Clear error messages dalam bahasa Indonesia
+
+---
+
+# 9. PERFORMANCE CONSIDERATIONS
+
+## Memory Management
+- **Session Isolation**: Setiap session memiliki memory terpisah
+- **File Cleanup**: Automatic cleanup untuk mencegah memory leak
+- **Model Caching**: Model disimpan untuk reuse
+
+## Processing Optimization
+- **Lazy Loading**: File hanya dibaca saat dibutuhkan
+- **Caching**: Reuse hasil analisis yang sudah ada
+- **Async Operations**: Non-blocking file operations
+
+---
+
+# 10. SECURITY CONSIDERATIONS
+
+## File Upload Security
+- **Format Validation**: Hanya CSV dan PDF yang diizinkan
+- **Path Sanitization**: Session-based file storage
+- **Size Limits**: Implicit file size management
+
+## Session Security
+- **UUID Generation**: Secure session ID generation
+- **Session Isolation**: Isolated file storage per session
+- **Data Privacy**: Session data tidak dibagikan antar session
+
+---
+
+# 11. INTEGRATION NOTES
+
+## Service Dependencies
+- **EDA Services**: `backend.services.eda.main`
+- **ML Services**: `backend.services.ml.*`
+- **Memory Services**: `backend.services.memory.*`
+- **RAG Services**: `backend.services.rag.*`
+- **Visualization Services**: `backend.services.visualization.main`
+
+## External Dependencies
+- **LangChain**: Natural language processing
+- **Google Generative AI**: LLM integration
+- **Joblib**: Model serialization
+- **Pandas**: Data manipulation
+
+---
+
+# 12. BEST PRACTICES
+
+## Prompt Engineering
+1. **Be Specific**: Gunakan prompt yang spesifik dan jelas
+2. **Context Aware**: Manfaatkan riwayat percakapan
+3. **Iterative**: Bangun analisis secara bertahap
+4. **Validation**: Selalu validasi hasil analisis
+
+## Session Management
+1. **Consistent Session ID**: Gunakan session ID yang sama untuk konteks
+2. **File Organization**: Organisir file dengan baik
+3. **Memory Management**: Bersihkan session yang tidak digunakan
+4. **Error Handling**: Handle error dengan graceful
+
+---
+
+# 13. TROUBLESHOOTING
+
+## Common Issues
+1. **Session Not Found**: Pastikan menggunakan session ID yang valid
+2. **File Not Found**: Pastikan file sudah diunggah sebelumnya
+3. **Model Not Found**: Pastikan model sudah dilatih sebelumnya
+4. **Memory Issues**: Bersihkan session yang tidak digunakan
+
+## Debug Tips
+1. **Check Logs**: Periksa log untuk error details
+2. **Validate Input**: Pastikan parameter yang diberikan valid
+3. **Test Incrementally**: Test fitur satu per satu
+4. **Clear Cache**: Bersihkan cache jika ada masalah
+
+---
+
+**Last Updated**: $(date)
+**Agent Services Documentation Version**: 1.0
+**API Version**: 1.0

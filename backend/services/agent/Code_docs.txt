@@ -1,0 +1,543 @@
+# Data Whisperer Agent Services - Code Documentation
+# ==================================================
+
+## Overview
+Dokumentasi ini menjelaskan struktur kode, fungsi, dan implementasi detail dari Agent Services dalam Data Whisperer.
+Dokumentasi ini mencakup analisis mendalam dari setiap file dan komponen kode dalam agent services.
+
+---
+
+# 1. EXECUTE TOOLS MODULE
+## File: `backend/services/agent/execute_tools.py`
+
+### Purpose
+Modul utama yang mengeksekusi berbagai tools berdasarkan plan yang dibuat oleh AI Agent. Menangani eksekusi EDA, ML, RAG, dan conversational tools.
+
+### Imports
+```python
+import os, base64
+from backend.services.eda import main as eda_main
+from backend.services.visualization import main as visualization_main
+from backend.services.ml import selector, preprocessor, trainer, evaluator, predictor
+from backend.utils.read_csv import _read_csv_with_fallback
+import joblib
+from backend.services.memory import memory_manager, persistent_memory
+from backend.services.rag import parser as rag_parser, vectorizer as rag_vectorizer, retriever as rag_retriever
+from backend.services.agent.interpretation import get_interpretation
+from typing import Optional, List, Dict
+```
+
+### Functions
+
+#### `execute_tool(session_id, plan, file_path, original_prompt)`
+- **Purpose**: Fungsi utama untuk mengeksekusi tool berdasarkan plan
+- **Parameters**:
+  - `session_id` (str): Session ID untuk tracking
+  - `plan` (dict): Plan yang dibuat oleh AI Agent
+  - `file_path` (Optional[str]): Path file yang akan diproses
+  - `original_prompt` (str): Prompt asli dari user
+- **Process Flow**:
+  1. Extract parameters dari plan
+  2. Normalize tool names
+  3. Categorize tools berdasarkan type
+  4. Handle file loading dari LTM jika diperlukan
+  5. Execute tool berdasarkan kategori
+  6. Generate interpretation dan return results
+- **Returns**: Dict dengan plan, summary, data, dan optional image
+- **Error Handling**: Comprehensive error handling untuk setiap tool type
+
+### Tool Categories
+
+#### Visual Tools
+```python
+visual_tools = ["histogram", "correlation-heatmap", "missing-value-heatmap", "target-feature-plot"]
+```
+- **Purpose**: Tools yang menghasilkan visualisasi
+- **Processing**: Menggunakan `visualization_main` service
+- **Output**: PNG image bytes yang di-encode ke base64
+
+#### EDA Data Tools
+```python
+data_tools_eda = ["describe", "skewness", "outliers", "full-profile", "vif", "analyze_target", "categorical_insights"]
+```
+- **Purpose**: Tools untuk exploratory data analysis
+- **Processing**: Menggunakan `eda_main` service
+- **Output**: JSON data dengan statistik dan insights
+
+#### ML Data Tools
+```python
+data_tools_ml = ["run_ml_pipeline", "run_tuned_ml_pipeline", "get_feature_importance"]
+```
+- **Purpose**: Tools untuk machine learning operations
+- **Processing**: Menggunakan ML services (selector, preprocessor, trainer, evaluator)
+- **Output**: Model metrics, feature importance, prediction results
+
+#### RAG Data Tools
+```python
+data_tools_rag = ["index_pdf", "answer_pdf_question"]
+```
+- **Purpose**: Tools untuk retrieval augmented generation
+- **Processing**: Menggunakan RAG services (parser, vectorizer, retriever)
+- **Output**: PDF indexing dan question answering
+
+### Special Tool Handlers
+
+#### `predict_new_data` Handler
+- **Purpose**: Memprediksi data baru menggunakan model yang sudah dilatih
+- **Process**:
+  1. Validasi model name dan new data
+  2. Load model dan preprocessor dari persistent memory
+  3. Execute prediction menggunakan predictor service
+  4. Return prediction results
+- **Error Handling**: Model not found, file not found, prediction errors
+
+#### `conversational_recall` Handler
+- **Purpose**: Menjawab pertanyaan berdasarkan riwayat chat
+- **Process**:
+  1. Load chat history dari memory manager
+  2. Construct prompt dengan context
+  3. Generate response menggunakan LLM
+  4. Return conversational answer
+- **Error Handling**: Memory not found, LLM errors
+
+### File Management
+- **LTM Integration**: Load files dari Long Term Memory jika tidak ada file path
+- **File Validation**: Validasi file existence dan format
+- **Error Recovery**: Cleanup file jika terjadi error
+
+### Memory Integration
+- **Model Persistence**: Save model artifacts ke persistent memory
+- **Session Management**: Track session state dan file paths
+- **Vector Store**: Manage vector stores untuk RAG operations
+
+---
+
+# 2. INTERPRETATION MODULE
+## File: `backend/services/agent/interpretation.py`
+
+### Purpose
+Modul yang menangani interpretasi hasil dari tools dan menghasilkan summary yang bermakna untuk user.
+
+### Imports
+```python
+from langchain_core.messages import HumanMessage
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_google_genai import ChatGoogleGenerativeAI
+from backend.services.memory import persistent_memory
+import json, base64
+from typing import Optional, List, Dict
+from dotenv import load_dotenv
+```
+
+### Global Configuration
+```python
+llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash")
+```
+
+### Functions
+
+#### `get_interpretation(session_id, tool_name, tool_output, image_bytes, baseline_metrics)`
+- **Purpose**: Fungsi universal untuk interpretasi hasil tools
+- **Parameters**:
+  - `session_id` (str): Session ID untuk context
+  - `tool_name` (str): Nama tool yang dieksekusi
+  - `tool_output`: Output dari tool
+  - `image_bytes` (Optional[bytes]): Image bytes untuk visual tools
+  - `baseline_metrics` (Optional[dict]): Baseline metrics untuk comparison
+- **Process Flow**:
+  1. Check jika ada image bytes (visual tools)
+  2. Jika image: Generate interpretation dengan vision model
+  3. Jika data: Use specific prompt templates berdasarkan tool
+  4. Generate summary menggunakan LLM
+  5. Return interpreted summary
+
+### Image Interpretation
+- **Vision Model**: Menggunakan Gemini dengan image input
+- **Prompt**: "Anda adalah AI data analyst. Jelaskan insight utama dari gambar {tool_name} ini..."
+- **Output**: Natural language interpretation dari visualisasi
+
+### Data Interpretation Templates
+
+#### `full-profile` Template
+- **Purpose**: Interpretasi profil data lengkap
+- **Focus**: Sorot 3-4 poin krusial, masalah kualitas data, distribusi aneh
+- **Output**: Narrative summary dengan rekomendasi
+
+#### `skewness` Template
+- **Purpose**: Interpretasi skewness analysis
+- **Focus**: Identifikasi kolom dengan skewness tinggi, rekomendasi transformasi
+- **Output**: Skewness insights dengan actionable recommendations
+
+#### `vif` Template
+- **Purpose**: Interpretasi VIF analysis
+- **Focus**: Multikolinearitas detection, rekomendasi feature selection
+- **Output**: VIF insights dengan feature engineering recommendations
+
+#### `run_ml_pipeline` Template
+- **Purpose**: Interpretasi ML pipeline results
+- **Focus**: Problem type, model performance, metrics explanation
+- **Output**: ML results interpretation dengan business context
+
+#### `run_tuned_ml_pipeline` Template
+- **Purpose**: Interpretasi hyperparameter tuning results
+- **Focus**: Comparison dengan baseline, improvement metrics
+- **Output**: Tuning results dengan performance comparison
+
+#### `get_feature_importance` Template
+- **Purpose**: Interpretasi feature importance
+- **Focus**: Top 3 features, business meaning, predictive power
+- **Output**: Feature importance dengan business insights
+
+### Baseline Comparison
+- **Purpose**: Compare tuned model dengan baseline model
+- **Process**: Load baseline metrics dari persistent memory
+- **Output**: Comparative analysis dengan specific improvements
+
+---
+
+# 3. MAIN AGENT MODULE
+## File: `backend/services/agent/main.py`
+
+### Purpose
+Modul utama yang mengatur flow agent dari prompt hingga response. Mengintegrasikan planning, execution, dan memory management.
+
+### Imports
+```python
+import os, json, base64
+from typing import Optional, List, Dict
+from pydantic import BaseModel, Field
+from langchain_core.output_parsers import JsonOutputParser
+from backend.utils.read_csv import _read_csv_with_fallback
+import joblib
+from backend.services.memory import memory_manager, persistent_memory
+from backend.services.agent.plan import get_agent_plan
+from backend.services.agent.execute_tools import execute_tool
+```
+
+### Functions
+
+#### `run_agent_flow(session_id, prompt, new_file_path, new_dataset_name)`
+- **Purpose**: Main flow function untuk agent execution
+- **Parameters**:
+  - `session_id` (str): Session ID untuk tracking
+  - `prompt` (str): User prompt
+  - `new_file_path` (Optional[str]): Path file baru yang diunggah
+  - `new_dataset_name` (Optional[str]): Nama dataset baru
+- **Process Flow**:
+  1. **File Processing**: Handle file upload dan extract columns
+  2. **Memory Integration**: Save file path ke persistent memory
+  3. **Planning**: Generate agent plan berdasarkan prompt dan columns
+  4. **Execution**: Execute tool berdasarkan plan
+  5. **Memory Update**: Save context ke short term memory
+  6. **Return**: Return execution results
+
+### File Processing Logic
+```python
+if new_file_path and new_dataset_name:
+    if new_dataset_name.endswith('.csv'):
+        # Process CSV file
+        # Extract columns
+        # Save to LTM
+    elif new_dataset_name.endswith('.pdf'):
+        # Process PDF file
+        # Save to LTM
+elif not new_file_path:
+    # Load from LTM
+    # Extract columns from cached file
+```
+
+### Memory Management
+- **Short Term Memory**: Save input-output pairs untuk context
+- **Long Term Memory**: Save file paths dan model artifacts
+- **Session Persistence**: Maintain session state across requests
+
+### Plot Planning
+
+#### `PlotPlan` Class
+```python
+class PlotPlan(BaseModel):
+    plot_type: str = Field(description="Tipe plot: bar, box, histogram, scatter")
+    x_col: str = Field(description="Nama kolom untuk sumbu X")
+    y_col: Optional[str] = Field(default=None, description="Nama kolom untuk sumbu Y")
+    hue_col: Optional[str] = Field(default=None, description="Nama kolom untuk pewarnaan")
+    orientation: str = Field(default='v', description="Orientasi plot")
+```
+
+#### `get_plot_plan(user_prompt)` Function
+- **Purpose**: Extract plot parameters dari user prompt
+- **Process**: Use LLM dengan structured output parser
+- **Output**: PlotPlan object dengan parameters
+
+---
+
+# 4. PLANNING MODULE
+## File: `backend/services/agent/plan.py`
+
+### Purpose
+Modul yang menangani planning dan tool selection berdasarkan user prompt dan context.
+
+### Imports
+```python
+from typing import Optional, List, Dict
+from pydantic import BaseModel, Field
+from langchain_core.output_parsers import JsonOutputParser
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.prompts import ChatPromptTemplate
+from backend.services.memory import memory_manager
+from dotenv import load_dotenv
+```
+
+### Global Configuration
+```python
+llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash")
+```
+
+### Data Models
+
+#### `ToolPlan` Class
+```python
+class ToolPlan(BaseModel):
+    tool_name: str = Field(description="Nama alat yang harus digunakan")
+    reasoning: str = Field(description="Alasan singkat pemilihan alat")
+    column_name: Optional[str] = Field(default=None, description="Nama kolom jika dibutuhkan")
+    target_column: Optional[str] = Field(default=None, description="Nama kolom target")
+    columns_to_drop: Optional[List[str]] = Field(default=None, description="Daftar kolom yang akan dibuang")
+    new_data: Optional[Dict] = Field(default=None, description="Data baru untuk prediksi")
+    model_name: Optional[str] = Field(default=None, description="Nama unik untuk model")
+    baseline_model_name: Optional[str] = Field(default=None, description="Nama model baseline")
+    pdf_question: Optional[str] = Field(default=None, description="Pertanyaan untuk PDF")
+```
+
+### Available Tools Configuration
+
+#### EDA Tools
+```python
+{"name": "describe", "description": "Untuk ringkasan statistik (mean, std, etc.)"}
+{"name": "correlation-heatmap", "description": "Untuk visualisasi korelasi antar kolom"}
+{"name": "histogram", "description": "Untuk visualisasi distribusi satu kolom"}
+{"name": "full-profile", "description": "Untuk analisis umum atau profil lengkap dataset"}
+{"name": "outliers", "description": "Untuk mendeteksi pencilan di satu kolom"}
+{"name": "skewness", "description": "Untuk memeriksa kemiringan distribusi data"}
+{"name": "missing-value-heatmap", "description": "Untuk visualisasi data yang hilang"}
+{"name": "target-feature-plot", "description": "Untuk visualisasi hubungan fitur dengan target"}
+{"name": "vif", "description": "Untuk menghitung VIF guna mendeteksi multikolinearitas"}
+{"name": "target-analysis", "description": "Untuk analisis variabel target"}
+{"name": "categorical-insights", "description": "Untuk analisis kategorikal"}
+```
+
+#### ML Tools
+```python
+{"name": "run_ml_pipeline", "description": "Gunakan ini untuk melatih model prediksi pada dataset. Butuh 'target_column'."}
+{"name": "run_tuned_ml_pipeline", "description": "Untuk melatih model dengan hyperparameter tuning agar lebih akurat. Butuh 'target_column'."}
+{"name": "get_feature_importance", "description": "Untuk mengetahui fitur apa yang paling penting dari model yang sudah dilatih."}
+{"name": "predict_new_data", "description": "Gunakan setelah model dilatih untuk memprediksi hasil dari satu data baru."}
+```
+
+#### RAG Tools
+```python
+{"name": "index_pdf", "description": "Gunakan ini satu kali saat pengguna mengunggah file PDF. Ini akan membaca dan mengindeks dokumen agar siap ditanyai."}
+{"name": "answer_pdf_question", "description": "Gunakan ini untuk menjawab pertanyaan spesifik dari dokumen PDF yang telah diindeks sebelumnya. Butuh 'pdf_question'."}
+```
+
+#### Conversational Tools
+```python
+{"name": "conversational_recall", "description": "Gunakan ini untuk menjawab pertanyaan kontekstual sederhana yang jawabannya dapat ditemukan di riwayat chat atau memori sesi."}
+```
+
+### Functions
+
+#### `get_agent_plan(session_id, user_prompt, column_list)`
+- **Purpose**: Generate agent plan berdasarkan user prompt dan context
+- **Parameters**:
+  - `session_id` (str): Session ID untuk memory access
+  - `user_prompt` (str): User prompt
+  - `column_list` (list[str]): Available columns dari dataset
+- **Process Flow**:
+  1. **Context Loading**: Load chat history dari memory
+  2. **Tool Selection**: Use LLM untuk select appropriate tool
+  3. **Parameter Extraction**: Extract parameters dari prompt
+  4. **Validation**: Validate column names dan parameters
+  5. **Return**: Return structured plan
+
+### Prompt Engineering
+
+#### Main Prompt Template
+- **Context**: Include chat history untuk continuity
+- **Tool List**: Provide comprehensive tool descriptions
+- **Column Validation**: Ensure column names are valid
+- **Examples**: Provide detailed examples untuk setiap tool type
+
+#### Column Extraction Rules
+- **Single Column Tools**: `histogram`, `outliers`, `categorical_insights`
+- **Target Column Tools**: `target-analysis`
+- **Dual Column Tools**: `target-feature-plot` (column_name + target_column)
+- **ML Tools**: `run_ml_pipeline`, `run_tuned_ml_pipeline`
+
+#### Example Patterns
+- **Plotting**: Extract column names untuk visualization
+- **ML Training**: Extract target column dan optional parameters
+- **ML Tuning**: Extract baseline model dan target column
+- **Feature Importance**: Extract model name
+- **Prediction**: Extract model name dan new data
+- **PDF Operations**: Extract PDF question atau indexing request
+
+---
+
+# 5. CODE ARCHITECTURE ANALYSIS
+
+## Design Patterns
+
+### 1. Command Pattern
+- **Tool Execution**: Each tool is a command that can be executed
+- **Parameterization**: Tools accept parameters through plan structure
+- **Undo/Redo**: Potential for command history (not implemented)
+
+### 2. Strategy Pattern
+- **Tool Selection**: Different strategies for different tool types
+- **Interpretation**: Different interpretation strategies for different outputs
+- **Memory Management**: Different memory strategies for different data types
+
+### 3. Template Method Pattern
+- **Execution Flow**: Standard flow dengan customizable steps
+- **Interpretation**: Standard interpretation dengan customizable templates
+- **Memory Management**: Standard memory operations dengan customizable storage
+
+## Error Handling Strategy
+
+### Tool Execution Errors
+- **File Not Found**: Graceful fallback ke LTM
+- **Parameter Missing**: Clear error messages dengan suggestions
+- **Processing Errors**: Detailed error information dengan context
+
+### Memory Errors
+- **Session Not Found**: Create new session
+- **Memory Corruption**: Graceful degradation
+- **Storage Errors**: Fallback mechanisms
+
+### LLM Errors
+- **Timeout**: Retry mechanisms
+- **Rate Limiting**: Queue management
+- **Invalid Response**: Validation dan fallback
+
+## Performance Considerations
+
+### Memory Management
+- **Session Isolation**: Prevent memory leaks
+- **File Cleanup**: Automatic cleanup mechanisms
+- **Model Caching**: Efficient model storage dan retrieval
+
+### Processing Optimization
+- **Lazy Loading**: Load data only when needed
+- **Caching**: Cache results untuk reuse
+- **Async Operations**: Non-blocking operations where possible
+
+## Security Considerations
+
+### File Security
+- **Path Validation**: Prevent directory traversal
+- **Format Validation**: Only allow safe file formats
+- **Size Limits**: Prevent memory exhaustion
+
+### Session Security
+- **UUID Generation**: Secure session ID generation
+- **Session Isolation**: Prevent cross-session access
+- **Data Privacy**: Ensure data privacy across sessions
+
+---
+
+# 6. INTEGRATION POINTS
+
+## Service Dependencies
+- **EDA Services**: `backend.services.eda.main`
+- **ML Services**: `backend.services.ml.*`
+- **Memory Services**: `backend.services.memory.*`
+- **RAG Services**: `backend.services.rag.*`
+- **Visualization Services**: `backend.services.visualization.main`
+
+## External Dependencies
+- **LangChain**: Natural language processing framework
+- **Google Generative AI**: LLM provider
+- **Joblib**: Model serialization
+- **Pandas**: Data manipulation
+- **Base64**: Image encoding
+
+## API Integration
+- **FastAPI**: Web framework integration
+- **Pydantic**: Data validation
+- **JSON**: Data serialization
+- **Multipart**: File upload handling
+
+---
+
+# 7. TESTING CONSIDERATIONS
+
+## Unit Testing
+- **Tool Execution**: Test individual tool execution
+- **Parameter Validation**: Test parameter extraction dan validation
+- **Error Handling**: Test error scenarios
+- **Memory Operations**: Test memory management
+
+## Integration Testing
+- **End-to-End Flow**: Test complete agent flow
+- **Service Integration**: Test service dependencies
+- **File Operations**: Test file upload dan processing
+- **Memory Persistence**: Test memory persistence across sessions
+
+## Mock Requirements
+- **LLM Responses**: Mock LLM responses untuk consistent testing
+- **File Operations**: Mock file system operations
+- **Memory Operations**: Mock memory management
+- **Service Responses**: Mock external service responses
+
+---
+
+# 8. MAINTENANCE NOTES
+
+## Code Quality
+- **Type Hints**: Comprehensive type annotations
+- **Error Messages**: Clear, actionable error messages
+- **Documentation**: Inline documentation untuk complex logic
+- **Logging**: Structured logging untuk debugging
+
+## Extensibility
+- **New Tools**: Easy to add new tool types
+- **New Interpretations**: Easy to add new interpretation templates
+- **New Memory Types**: Easy to add new memory storage types
+- **New LLM Providers**: Easy to switch LLM providers
+
+## Monitoring
+- **Performance Metrics**: Track execution times
+- **Error Rates**: Monitor error frequencies
+- **Memory Usage**: Monitor memory consumption
+- **Session Activity**: Track session usage patterns
+
+---
+
+# 9. KNOWN ISSUES & IMPROVEMENTS
+
+## Suggested Improvements
+1. **Error Handling**: More specific error messages
+2. **Validation**: Enhanced input validation
+3. **Logging**: Structured logging implementation
+4. **Caching**: Response caching untuk performance
+5. **Rate Limiting**: LLM rate limiting implementation
+6. **Memory Optimization**: Better memory management
+7. **Async Operations**: More async operations untuk performance
+
+---
+
+# 10. VERSION HISTORY
+
+## Version 1.0
+- Initial implementation
+- Basic tool execution
+- Memory management
+- LLM integration
+- File handling
+- Session management
+
+---
+
+**Last Updated**: $(date)
+**Agent Services Code Documentation Version**: 1.0
+**API Version**: 1.0

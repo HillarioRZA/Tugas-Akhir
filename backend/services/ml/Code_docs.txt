@@ -1,0 +1,706 @@
+# Data Whisperer ML Services - Code Documentation
+# ===============================================
+
+## Overview
+Dokumentasi ini menjelaskan struktur kode, fungsi, dan implementasi detail dari ML Services dalam Data Whisperer.
+ML Services menyediakan pipeline machine learning lengkap dari preprocessing hingga evaluation dan prediction.
+
+---
+
+# 1. EVALUATOR MODULE
+## File: `backend/services/ml/evaluator.py`
+
+### Purpose
+Modul yang menangani evaluasi model machine learning dengan berbagai metrik berdasarkan tipe masalah (klasifikasi atau regresi).
+
+### Imports
+```python
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score, f1_score,
+    mean_squared_error, mean_absolute_error, r2_score
+)
+import pandas as pd
+```
+
+### Dependencies Analysis
+- **sklearn.metrics**: Metrik evaluasi untuk klasifikasi dan regresi
+- **pandas**: Data manipulation untuk feature importance
+
+---
+
+## Core Functions
+
+### `evaluate_model(model, X_test, y_test, problem_type: str) -> dict`
+**Purpose**: Mengevaluasi performa model menggunakan metrik yang sesuai dengan tipe masalah.
+
+**Parameters**:
+- `model`: Trained model object
+- `X_test`: Test features
+- `y_test`: Test target values
+- `problem_type` (str): "Klasifikasi" atau "Regresi"
+
+**Process Flow**:
+1. **Prediction**: Generate predictions menggunakan `model.predict()`
+2. **Problem Type Check**: Determine evaluation metrics berdasarkan problem type
+3. **Metrics Calculation**: Calculate appropriate metrics
+4. **Return Results**: Return metrics dictionary
+
+**Returns**: Dictionary dengan evaluation metrics
+
+**Code Analysis**:
+```python
+def evaluate_model(model, X_test, y_test, problem_type: str) -> dict:
+    y_pred = model.predict(X_test)
+
+    if problem_type == "Klasifikasi":
+        metrics = {
+            "accuracy": accuracy_score(y_test, y_pred),
+            "precision": precision_score(y_test, y_pred, average='weighted', zero_division=0),
+            "recall": recall_score(y_test, y_pred, average='weighted', zero_division=0),
+            "f1_score": f1_score(y_test, y_pred, average='weighted', zero_division=0)
+        }
+    elif problem_type == "Regresi":
+        metrics = {
+            "mean_squared_error": mean_squared_error(y_test, y_pred),
+            "mean_absolute_error": mean_absolute_error(y_test, y_pred),
+            "r2_score": r2_score(y_test, y_pred)
+        }
+    else:
+        return {"error": "Tipe masalah tidak didukung."}
+
+    return metrics
+```
+
+### Classification Metrics
+- **Accuracy**: Overall accuracy score
+- **Precision**: Weighted precision score dengan zero_division=0
+- **Recall**: Weighted recall score dengan zero_division=0
+- **F1 Score**: Weighted F1 score dengan zero_division=0
+
+### Regression Metrics
+- **Mean Squared Error (MSE)**: Average squared difference
+- **Mean Absolute Error (MAE)**: Average absolute difference
+- **R2 Score**: Coefficient of determination
+
+### Error Handling
+- **Unsupported Problem Type**: Return error message
+- **Zero Division**: Handle zero division dengan zero_division=0
+
+---
+
+### `get_feature_importance(model, preprocessor) -> list[dict]`
+**Purpose**: Mengekstrak feature importance dari model dan mengembalikan top 10 features.
+
+**Parameters**:
+- `model`: Trained model dengan feature_importances_ attribute
+- `preprocessor`: Preprocessor object untuk mendapatkan feature names
+
+**Process Flow**:
+1. **Feature Names**: Get feature names dari preprocessor
+2. **Importances**: Extract feature importances dari model
+3. **DataFrame Creation**: Create DataFrame dengan feature names dan importances
+4. **Sorting**: Sort berdasarkan importance (descending)
+5. **Top 10**: Select top 10 features
+6. **Return**: Convert ke list of dictionaries
+
+**Returns**: List of dictionaries dengan top 10 features
+
+**Code Analysis**:
+```python
+def get_feature_importance(model, preprocessor) -> list[dict]:
+    try:
+        feature_names = preprocessor.get_feature_names_out()
+        importances = model.feature_importances_
+        
+        feature_importance_df = pd.DataFrame({
+            'feature': feature_names,
+            'importance': importances
+        }).sort_values(by='importance', ascending=False)
+        
+        top_10_features = feature_importance_df.head(10)
+        return top_10_features.to_dict('records')
+        
+    except AttributeError:
+        return [{"error": "Model yang digunakan tidak mendukung ekstraksi kepentingan fitur."}]
+    except Exception as e:
+        return [{"error": f"Terjadi kesalahan: {str(e)}"}]
+```
+
+### Error Handling
+- **AttributeError**: Model tidak memiliki feature_importances_
+- **General Exception**: Catch all other errors
+- **Graceful Degradation**: Return error message dalam list format
+
+### Business Logic
+- **Feature Names**: Menggunakan preprocessor untuk mendapatkan feature names
+- **Sorting**: Descending order berdasarkan importance
+- **Top 10**: Limit ke 10 features teratas
+- **Format**: Convert ke records format untuk API response
+
+---
+
+# 2. PREDICTOR MODULE
+## File: `backend/services/ml/predictor.py`
+
+### Purpose
+Modul yang menangani prediksi data baru menggunakan model yang sudah dilatih.
+
+### Imports
+```python
+import pandas as pd
+```
+
+### Dependencies Analysis
+- **pandas**: Data manipulation untuk DataFrame operations
+
+---
+
+## Core Functions
+
+### `predict_new_data(new_data: dict, model, preprocessor)`
+**Purpose**: Memprediksi data baru menggunakan trained model dan preprocessor.
+
+**Parameters**:
+- `new_data` (dict): Dictionary dengan feature values untuk prediksi
+- `model`: Trained model object
+- `preprocessor`: Preprocessor object untuk data transformation
+
+**Process Flow**:
+1. **DataFrame Creation**: Convert dictionary ke pandas DataFrame
+2. **Data Preprocessing**: Transform data menggunakan preprocessor
+3. **Prediction**: Generate prediction menggunakan model
+4. **Result Formatting**: Format prediction untuk return
+
+**Returns**: Dictionary dengan prediction result atau error
+
+**Code Analysis**:
+```python
+def predict_new_data(new_data: dict, model, preprocessor):
+    try:
+        new_df = pd.DataFrame([new_data])
+        new_data_processed = preprocessor.transform(new_df)
+        prediction = model.predict(new_data_processed)
+        return {"prediction": prediction[0].tolist()}
+    except Exception as e:
+        return {"error": f"Gagal melakukan prediksi. Pastikan data baru memiliki semua kolom yang dibutuhkan. Detail: {str(e)}"}
+```
+
+### Data Processing
+- **DataFrame Creation**: `pd.DataFrame([new_data])` untuk single row
+- **Preprocessing**: `preprocessor.transform()` untuk data transformation
+- **Prediction**: `model.predict()` untuk generate prediction
+- **Formatting**: `prediction[0].tolist()` untuk convert ke list
+
+### Error Handling
+- **Comprehensive Exception Handling**: Catch all exceptions
+- **User-Friendly Messages**: Clear error messages dalam bahasa Indonesia
+- **Data Validation**: Suggestion untuk data validation
+
+### Business Logic
+- **Single Prediction**: Designed untuk single data point prediction
+- **Preprocessing Integration**: Menggunakan same preprocessor sebagai training
+- **Result Format**: Consistent format untuk API response
+
+---
+
+# 3. PREPROCESSOR MODULE
+## File: `backend/services/ml/preprocessor.py`
+
+### Purpose
+Modul yang menangani preprocessing data untuk machine learning dengan handling numeric dan categorical features.
+
+### Imports
+```python
+import pandas as pd
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+```
+
+### Dependencies Analysis
+- **pandas**: Data manipulation
+- **sklearn.compose**: ColumnTransformer untuk different transformers
+- **sklearn.pipeline**: Pipeline untuk sequential transformations
+- **sklearn.impute**: SimpleImputer untuk missing values
+- **sklearn.preprocessing**: StandardScaler dan OneHotEncoder
+
+---
+
+## Core Functions
+
+### `preprocess_data(df: pd.DataFrame, target_column_name: str)`
+**Purpose**: Preprocess data dengan handling numeric dan categorical features secara terpisah.
+
+**Parameters**:
+- `df` (pd.DataFrame): Input DataFrame
+- `target_column_name` (str): Nama kolom target
+
+**Process Flow**:
+1. **Feature-Target Split**: Split features (X) dan target (y)
+2. **Feature Type Detection**: Identify numeric dan categorical features
+3. **Numeric Pipeline**: Create pipeline untuk numeric features
+4. **Categorical Pipeline**: Create pipeline untuk categorical features
+5. **Column Transformer**: Combine transformers menggunakan ColumnTransformer
+6. **Fit Transform**: Fit dan transform data
+7. **Return Results**: Return processed data, target, dan preprocessor
+
+**Returns**: Tuple (X_processed, y, preprocessor_pipeline)
+
+**Code Analysis**:
+```python
+def preprocess_data(df: pd.DataFrame, target_column_name: str):
+    # Feature-Target Split
+    X = df.drop(columns=[target_column_name])
+    y = df[target_column_name]
+
+    # Feature Type Detection
+    numeric_features = X.select_dtypes(include=['number']).columns
+    categorical_features = X.select_dtypes(include=['object', 'category']).columns
+
+    # Numeric Pipeline
+    numeric_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='median')),
+        ('scaler', StandardScaler())
+    ])
+
+    # Categorical Pipeline
+    categorical_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='most_frequent')),
+        ('onehot', OneHotEncoder(handle_unknown='ignore'))
+    ])
+
+    # Column Transformer
+    preprocessor_pipeline = ColumnTransformer(
+        transformers=[
+            ('num', numeric_transformer, numeric_features),
+            ('cat', categorical_transformer, categorical_features)
+        ])
+
+    # Fit Transform
+    X_processed = preprocessor_pipeline.fit_transform(X)
+    
+    return X_processed, y, preprocessor_pipeline
+```
+
+### Numeric Pipeline
+- **Imputation**: SimpleImputer dengan strategy='median'
+- **Scaling**: StandardScaler untuk normalization
+- **Purpose**: Handle missing values dan scale numeric features
+
+### Categorical Pipeline
+- **Imputation**: SimpleImputer dengan strategy='most_frequent'
+- **Encoding**: OneHotEncoder dengan handle_unknown='ignore'
+- **Purpose**: Handle missing values dan encode categorical features
+
+### Column Transformer
+- **Numeric Features**: Apply numeric pipeline ke numeric columns
+- **Categorical Features**: Apply categorical pipeline ke categorical columns
+- **Combined Processing**: Process different feature types secara terpisah
+
+### Feature Type Detection
+- **Numeric**: `include=['number']` untuk numeric columns
+- **Categorical**: `include=['object', 'category']` untuk categorical columns
+
+### Business Logic
+- **Automatic Detection**: Automatic feature type detection
+- **Separate Processing**: Different processing untuk different feature types
+- **Missing Value Handling**: Robust missing value handling
+- **Scaling**: Standardization untuk numeric features
+- **Encoding**: One-hot encoding untuk categorical features
+
+---
+
+# 4. SELECTOR MODULE
+## File: `backend/services/ml/selector.py`
+
+### Purpose
+Modul yang menangani deteksi tipe masalah machine learning (klasifikasi atau regresi) berdasarkan karakteristik target column.
+
+### Imports
+```python
+import pandas as pd
+from typing import Literal
+```
+
+### Dependencies Analysis
+- **pandas**: Data manipulation untuk Series operations
+- **typing**: Literal type untuk return type annotation
+
+---
+
+## Core Functions
+
+### `detect_problem_type(target_column: pd.Series) -> Literal["Klasifikasi", "Regresi"]`
+**Purpose**: Mendeteksi tipe masalah machine learning berdasarkan karakteristik target column.
+
+**Parameters**:
+- `target_column` (pd.Series): Target column untuk dianalisis
+
+**Process Flow**:
+1. **Data Cleaning**: Drop null values dari target column
+2. **Data Type Check**: Check data type (object, numeric)
+3. **Unique Values Analysis**: Analyze unique values count
+4. **Problem Type Determination**: Determine klasifikasi atau regresi
+5. **Return Result**: Return problem type
+
+**Returns**: "Klasifikasi" atau "Regresi"
+
+**Code Analysis**:
+```python
+def detect_problem_type(target_column: pd.Series) -> Literal["Klasifikasi", "Regresi"]:
+    target_column = target_column.dropna()
+
+    # Object dtype -> Classification
+    if pd.api.types.is_object_dtype(target_column):
+        return "Klasifikasi"
+
+    # Numeric dtype analysis
+    if pd.api.types.is_numeric_dtype(target_column):
+        unique_values = target_column.nunique()
+
+        # Binary classification
+        if unique_values == 2:
+            return "Klasifikasi"
+
+        # Multi-class classification (≤15 unique integer values)
+        if unique_values <= 15 and pd.api.types.is_integer_dtype(target_column):
+            return "Klasifikasi"
+        else:
+            return "Regresi"
+    
+    # Default to classification
+    return "Klasifikasi"
+```
+
+### Detection Logic
+1. **Object Dtype**: Always classification
+2. **Numeric Dtype**:
+   - **2 unique values**: Binary classification
+   - **≤15 unique integer values**: Multi-class classification
+   - **>15 unique values**: Regression
+3. **Default**: Classification (conservative approach)
+
+### Business Logic
+- **Conservative Approach**: Default ke classification jika uncertain
+- **Integer Check**: Check integer dtype untuk multi-class classification
+- **Threshold**: 15 unique values sebagai threshold
+- **Binary Detection**: 2 unique values sebagai binary classification
+
+### Error Handling
+- **Null Values**: Drop null values sebelum analysis
+- **Data Type Validation**: Check data types sebelum analysis
+- **Edge Cases**: Handle edge cases dengan default classification
+
+---
+
+# 5. TRAINER MODULE
+## File: `backend/services/ml/trainer.py`
+
+### Purpose
+Modul yang menangani training model machine learning dengan support untuk hyperparameter tuning.
+
+### Imports
+```python
+from sklearn.model_selection import train_test_split, RandomizedSearchCV
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from scipy.stats import randint
+```
+
+### Dependencies Analysis
+- **sklearn.model_selection**: train_test_split dan RandomizedSearchCV
+- **sklearn.ensemble**: RandomForest models
+- **scipy.stats**: randint untuk random parameter generation
+
+---
+
+## Core Functions
+
+### `train_model(X, y, problem_type: str, perform_tuning: bool = False)`
+**Purpose**: Train model machine learning dengan optional hyperparameter tuning.
+
+**Parameters**:
+- `X`: Feature matrix
+- `y`: Target vector
+- `problem_type` (str): "Klasifikasi" atau "Regresi"
+- `perform_tuning` (bool): Whether to perform hyperparameter tuning
+
+**Process Flow**:
+1. **Train-Test Split**: Split data menjadi train dan test sets
+2. **Model Selection**: Select model berdasarkan problem type
+3. **Hyperparameter Tuning**: Optional hyperparameter tuning
+4. **Model Training**: Train model dengan atau tanpa tuning
+5. **Return Results**: Return trained model, test data, model name, dan best parameters
+
+**Returns**: Tuple (model, X_test, y_test, model_name, best_params)
+
+**Code Analysis**:
+```python
+def train_model(X, y, problem_type: str, perform_tuning: bool = False):
+    # Train-Test Split
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42
+    )
+
+    best_params = "Default"
+    
+    if problem_type == "Klasifikasi":
+        model = RandomForestClassifier(random_state=42)
+        model_name = "RandomForestClassifier"
+
+        if perform_tuning:
+            param_dist = {
+                'n_estimators': randint(100, 500),
+                'max_depth': [10, 20, 30, None],
+                'min_samples_leaf': randint(1, 4)
+            }
+            search = RandomizedSearchCV(model, param_distributions=param_dist, n_iter=10, cv=3, random_state=42, n_jobs=-1)
+            search.fit(X_train, y_train)
+            model = search.best_estimator_
+            best_params = search.best_params_
+
+    elif problem_type == "Regresi":
+        model = RandomForestRegressor(random_state=42)
+        model_name = "RandomForestRegressor"
+
+        if perform_tuning:
+            param_dist = {
+                'n_estimators': randint(200, 1000),
+                'max_depth': [10, 20, 50, None],
+                'min_samples_split': randint(2, 10)
+            }
+            search = RandomizedSearchCV(model, param_distributions=param_dist, n_iter=10, cv=3, random_state=42, n_jobs=-1)
+            search.fit(X_train, y_train)
+            model = search.best_estimator_
+            best_params = search.best_params_
+    else:
+        raise ValueError("Tipe masalah tidak didukung.")
+
+    if not perform_tuning:
+        model.fit(X_train, y_train)
+
+    return model, X_test, y_test, model_name, best_params
+```
+
+### Model Selection
+- **Classification**: RandomForestClassifier
+- **Regression**: RandomForestRegressor
+- **Random State**: Consistent random_state=42 untuk reproducibility
+
+### Hyperparameter Tuning
+- **RandomizedSearchCV**: Efficient hyperparameter search
+- **Cross Validation**: 3-fold CV untuk robust evaluation
+- **Iterations**: 10 iterations untuk balance speed dan quality
+- **Parallel Processing**: n_jobs=-1 untuk parallel processing
+
+### Classification Parameters
+- **n_estimators**: randint(100, 500) - Number of trees
+- **max_depth**: [10, 20, 30, None] - Maximum tree depth
+- **min_samples_leaf**: randint(1, 4) - Minimum samples per leaf
+
+### Regression Parameters
+- **n_estimators**: randint(200, 1000) - Number of trees
+- **max_depth**: [10, 20, 50, None] - Maximum tree depth
+- **min_samples_split**: randint(2, 10) - Minimum samples to split
+
+### Train-Test Split
+- **Test Size**: 20% untuk test set
+- **Random State**: 42 untuk reproducibility
+- **Stratification**: Automatic stratification untuk classification
+
+### Error Handling
+- **Unsupported Problem Type**: Raise ValueError
+- **Model Training**: Handle training errors
+- **Hyperparameter Tuning**: Handle tuning errors
+
+### Business Logic
+- **Default Parameters**: Use default parameters jika tidak tuning
+- **Best Parameters**: Return best parameters dari tuning
+- **Model Name**: Return model name untuk identification
+- **Test Data**: Return test data untuk evaluation
+
+---
+
+# 6. CODE ARCHITECTURE ANALYSIS
+
+## Design Patterns
+
+### 1. Pipeline Pattern
+- **Preprocessing**: Sequential preprocessing steps
+- **Training**: Model training dengan optional tuning
+- **Evaluation**: Model evaluation dengan appropriate metrics
+- **Prediction**: New data prediction
+
+### 2. Strategy Pattern
+- **Problem Type Detection**: Different strategies untuk different problem types
+- **Model Selection**: Different models untuk different problem types
+- **Metrics Selection**: Different metrics untuk different problem types
+
+### 3. Factory Pattern
+- **Model Creation**: Factory untuk model creation berdasarkan problem type
+- **Preprocessor Creation**: Factory untuk preprocessor creation
+- **Metrics Creation**: Factory untuk metrics creation
+
+## ML Pipeline Architecture
+
+### 1. Data Preprocessing
+- **Feature Engineering**: Automatic feature type detection
+- **Missing Value Handling**: Robust missing value imputation
+- **Scaling**: Standardization untuk numeric features
+- **Encoding**: One-hot encoding untuk categorical features
+
+### 2. Model Training
+- **Problem Detection**: Automatic problem type detection
+- **Model Selection**: Appropriate model selection
+- **Hyperparameter Tuning**: Optional hyperparameter optimization
+- **Cross Validation**: Robust model evaluation
+
+### 3. Model Evaluation
+- **Metrics Selection**: Appropriate metrics berdasarkan problem type
+- **Feature Importance**: Feature importance extraction
+- **Performance Analysis**: Comprehensive performance analysis
+
+### 4. Model Prediction
+- **Data Preprocessing**: Same preprocessing sebagai training
+- **Prediction**: New data prediction
+- **Result Formatting**: Consistent result formatting
+
+## Error Handling Strategy
+
+### Preprocessing Errors
+- **Data Type Errors**: Handle data type errors
+- **Missing Values**: Robust missing value handling
+- **Feature Mismatch**: Handle feature mismatch errors
+
+### Training Errors
+- **Model Training**: Handle model training errors
+- **Hyperparameter Tuning**: Handle tuning errors
+- **Data Validation**: Validate data sebelum training
+
+### Evaluation Errors
+- **Metrics Calculation**: Handle metrics calculation errors
+- **Feature Importance**: Handle feature importance errors
+- **Model Compatibility**: Handle model compatibility issues
+
+### Prediction Errors
+- **Data Format**: Handle data format errors
+- **Feature Mismatch**: Handle feature mismatch errors
+- **Model Loading**: Handle model loading errors
+
+## Performance Considerations
+
+### Memory Management
+- **Data Size**: Handle large datasets efficiently
+- **Feature Engineering**: Efficient feature engineering
+- **Model Storage**: Efficient model storage
+
+### Processing Optimization
+- **Parallel Processing**: Use parallel processing untuk hyperparameter tuning
+- **Vectorization**: Use vectorized operations
+- **Caching**: Cache preprocessing results
+
+### Scalability
+- **Model Selection**: Scalable model selection
+- **Feature Engineering**: Scalable feature engineering
+- **Training**: Scalable training process
+
+---
+
+# 7. INTEGRATION POINTS
+
+## Service Dependencies
+- **EDA Services**: Data analysis sebelum ML
+- **Memory Services**: Model dan preprocessor storage
+- **Agent Services**: ML operations melalui agent
+
+## External Dependencies
+- **Scikit-learn**: Machine learning framework
+- **Pandas**: Data manipulation
+- **NumPy**: Numerical operations
+- **SciPy**: Statistical operations
+
+## API Integration
+- **FastAPI**: Web framework integration
+- **JSON**: Data serialization
+- **File Operations**: Model file operations
+
+---
+
+# 8. TESTING CONSIDERATIONS
+
+## Unit Testing
+- **Function Testing**: Test individual ML functions
+- **Data Validation**: Test data validation
+- **Error Handling**: Test error scenarios
+- **Metrics Calculation**: Test metrics calculation
+
+## Integration Testing
+- **Pipeline Testing**: Test complete ML pipeline
+- **Model Training**: Test model training process
+- **Prediction**: Test prediction process
+- **Evaluation**: Test evaluation process
+
+## Mock Requirements
+- **Model Objects**: Mock trained models
+- **Data**: Mock training dan test data
+- **Preprocessors**: Mock preprocessor objects
+- **Metrics**: Mock metrics calculation
+
+---
+
+# 9. MAINTENANCE NOTES
+
+## Code Quality
+- **Type Hints**: Comprehensive type annotations
+- **Error Handling**: Robust error handling
+- **Documentation**: Inline documentation
+- **Logging**: Detailed logging untuk debugging
+
+## Extensibility
+- **New Models**: Easy to add new model types
+- **New Metrics**: Easy to add new metrics
+- **New Preprocessors**: Easy to add new preprocessors
+- **New Problem Types**: Easy to add new problem types
+
+## Monitoring
+- **Model Performance**: Monitor model performance
+- **Training Time**: Monitor training time
+- **Prediction Time**: Monitor prediction time
+- **Error Rates**: Monitor error rates
+
+---
+
+# 10. KNOWN ISSUES & IMPROVEMENTS
+
+## Current Issues
+1. **Limited Models**: Hanya RandomForest models
+2. **Basic Tuning**: Basic hyperparameter tuning
+3. **Error Handling**: Could be more comprehensive
+4. **Performance**: Could be optimized untuk large datasets
+
+## Suggested Improvements
+1. **More Models**: Add support untuk more model types
+2. **Advanced Tuning**: More sophisticated hyperparameter tuning
+3. **Better Error Handling**: More comprehensive error handling
+4. **Performance Optimization**: Better performance untuk large datasets
+5. **Feature Engineering**: More advanced feature engineering
+6. **Model Validation**: Better model validation
+7. **Monitoring**: Better monitoring dan logging
+
+---
+
+# 11. VERSION HISTORY
+
+## Version 1.0
+- Initial implementation
+- Basic ML pipeline
+- RandomForest models
+- Hyperparameter tuning
+- Model evaluation
+- Prediction support
+
+---
+
+**Last Updated**: $(date)
+**ML Services Code Documentation Version**: 1.0
+**API Version**: 1.0
