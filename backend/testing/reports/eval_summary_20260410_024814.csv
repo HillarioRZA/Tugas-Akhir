@@ -1,7 +1,0 @@
-﻿No,Nama Skenario,Kategori,D1 Tool (40%),D2 Argumen (35%),D3 Respons (25%),Skor Total,Bonus,Status,Tools Dipanggil,Kriteria
-1,Clear Request — Optimizer Langsung,Tool Selection & Argument Extraction,100%,100%,100%,100.0%,Tidak,Lulus,"['budget_optimizer_tool', 'plot_itinerary_scatter']",budget_optimizer_tool dipanggil dengan budget=400000 dan duration=2
-2,Neuro-Symbolic — RAG + Optimizer,Multi-Tool Chaining & Semantic Understanding,100%,100%,100%,100.0%,Tidak,Lulus,['budget_optimizer_tool'],budget_optimizer_tool dipanggil dengan budget=150000 dan duration=1
-3,Logical Pushback — Impossible Constraint,Reasoning & Constraint Validation,100%,100%,100%,100.0%,Tidak,Lulus,['budget_optimizer_tool'],Agent melakukan pushback logis: memberitahu budget tidak cukup
-4,Explainable AI — ML + Scatter Plot,XAI: Multi-Tool ML + Visualization,100%,100%,100%,100.0%,Ya,Lulus,"['budget_optimizer_tool', 'predict_match_score', 'plot_itinerary_scatter']",budget_optimizer_tool dipanggil dengan budget=100000 dan keywords Denpasar
-5,EDA Filter Spesifik — Multi-Criteria,Data Analysis & Filtered Query,100%,100%,83%,95.8%,Tidak,Lulus,['budget_optimizer_tool'],Optimizer/EDA dipanggil dengan filter Buleleng dan min_rating >= 4.5
--,TOTAL / RATA-RATA,-,100.0%,100.0%,96.6%,99.2%,-,Success Rate: 100.0%,-,Success Rate >= 90%
