@@ -1,0 +1,466 @@
+{
+  "generated_at": "2026-04-10T02:48:14.172526",
+  "summary": {
+    "total_scenarios": 5,
+    "success_count": 5,
+    "failure_count": 0,
+    "success_rate": "100.0%",
+    "average_score": 0.992,
+    "per_dimension": {
+      "D1_tool_selection_avg": 1.0,
+      "D2_argument_quality_avg": 1.0,
+      "D3_response_quality_avg": 0.966
+    },
+    "meets_proposal_target": true,
+    "proposal_target": "Success Rate >= 90%"
+  },
+  "results": [
+    {
+      "scenario_id": 1,
+      "scenario_name": "Clear Request — Optimizer Langsung",
+      "category": "Tool Selection & Argument Extraction",
+      "prompt": "Tolong buatkan itinerary 2 hari ke wisata Alam di Kabupaten Bangli. Saya punya b...",
+      "is_success": true,
+      "final_score": 1.0,
+      "passing_score": 0.6,
+      "bonus_applied": false,
+      "tools_called": [
+        "budget_optimizer_tool",
+        "plot_itinerary_scatter"
+      ],
+      "dimensions": {
+        "D1_tool_selection": {
+          "score": 1.0,
+          "weight": "40%",
+          "result": "LULUS: Semua expected tools dipanggil: {'budget_optimizer_tool'}"
+        },
+        "D2_argument_quality": {
+          "score": 1.0,
+          "weight": "35%",
+          "result": "3/3 argumen lulus validasi.",
+          "details": [
+            {
+              "tool": "budget_optimizer_tool",
+              "arg": "budget_limit",
+              "status": "LULUS",
+              "actual": 400000,
+              "reason": "Argumen sesuai ekspektasi."
+            },
+            {
+              "tool": "budget_optimizer_tool",
+              "arg": "duration_days",
+              "status": "LULUS",
+              "actual": 2,
+              "reason": "Argumen sesuai ekspektasi."
+            },
+            {
+              "tool": "budget_optimizer_tool",
+              "arg": "location_keywords",
+              "status": "LULUS",
+              "actual": [
+                "Bangli",
+                "Alam"
+              ],
+              "reason": "Argumen sesuai ekspektasi."
+            }
+          ]
+        },
+        "D3_response_quality": {
+          "score": 1.0,
+          "weight": "25%",
+          "result": "7/7 response quality checks lulus.",
+          "details": [
+            {
+              "type": "expected_keyword",
+              "keyword": "itinerary",
+              "status": "LULUS",
+              "found": true
+            },
+            {
+              "type": "expected_keyword",
+              "keyword": "bangli",
+              "status": "LULUS",
+              "found": true
+            },
+            {
+              "type": "expected_keyword",
+              "keyword": "alam",
+              "status": "LULUS",
+              "found": true
+            },
+            {
+              "type": "expected_keyword",
+              "keyword": "400",
+              "status": "LULUS",
+              "found": true
+            },
+            {
+              "type": "forbidden_keyword",
+              "keyword": "paris",
+              "status": "LULUS",
+              "found": false,
+              "note": ""
+            },
+            {
+              "type": "forbidden_keyword",
+              "keyword": "lombok",
+              "status": "LULUS",
+              "found": false,
+              "note": ""
+            },
+            {
+              "type": "forbidden_keyword",
+              "keyword": "jakarta",
+              "status": "LULUS",
+              "found": false,
+              "note": ""
+            }
+          ]
+        }
+      },
+      "passing_criteria": "budget_optimizer_tool dipanggil dengan budget=400000 dan duration=2",
+      "raw_response_preview": "Berhasil membuat itinerary 2 hari di Bangli dengan budget 400000 rupiah. Wisata alam tersedia."
+    },
+    {
+      "scenario_id": 2,
+      "scenario_name": "Neuro-Symbolic — RAG + Optimizer",
+      "category": "Multi-Tool Chaining & Semantic Understanding",
+      "prompt": "Saya sedang sangat stres dari pekerjaan dan ingin mencari suasana yang damai, ja...",
+      "is_success": true,
+      "final_score": 1.0,
+      "passing_score": 0.6,
+      "bonus_applied": false,
+      "tools_called": [
+        "budget_optimizer_tool"
+      ],
+      "dimensions": {
+        "D1_tool_selection": {
+          "score": 1.0,
+          "weight": "40%",
+          "result": "LULUS: Semua expected tools dipanggil: {'budget_optimizer_tool'}"
+        },
+        "D2_argument_quality": {
+          "score": 1.0,
+          "weight": "35%",
+          "result": "2/2 argumen lulus validasi.",
+          "details": [
+            {
+              "tool": "budget_optimizer_tool",
+              "arg": "budget_limit",
+              "status": "LULUS",
+              "actual": 150000,
+              "reason": "Argumen sesuai ekspektasi."
+            },
+            {
+              "tool": "budget_optimizer_tool",
+              "arg": "duration_days",
+              "status": "LULUS",
+              "actual": 1,
+              "reason": "Argumen sesuai ekspektasi."
+            }
+          ]
+        },
+        "D3_response_quality": {
+          "score": 1.0,
+          "weight": "25%",
+          "result": "6/6 response quality checks lulus.",
+          "details": [
+            {
+              "type": "expected_keyword",
+              "keyword": "150",
+              "status": "LULUS",
+              "found": true
+            },
+            {
+              "type": "expected_keyword",
+              "keyword": "damai",
+              "status": "LULUS",
+              "found": true
+            },
+            {
+              "type": "expected_keyword",
+              "keyword": "alam",
+              "status": "LULUS",
+              "found": true
+            },
+            {
+              "type": "forbidden_keyword",
+              "keyword": "paris",
+              "status": "LULUS",
+              "found": false,
+              "note": ""
+            },
+            {
+              "type": "forbidden_keyword",
+              "keyword": "tokyo",
+              "status": "LULUS",
+              "found": false,
+              "note": ""
+            },
+            {
+              "type": "forbidden_keyword",
+              "keyword": "mall",
+              "status": "LULUS",
+              "found": false,
+              "note": ""
+            }
+          ]
+        }
+      },
+      "passing_criteria": "budget_optimizer_tool dipanggil dengan budget=150000 dan duration=1",
+      "raw_response_preview": "Saya menemukan wisata alam yang damai dan tenang dengan budget 150000 selama 1 hari."
+    },
+    {
+      "scenario_id": 3,
+      "scenario_name": "Logical Pushback — Impossible Constraint",
+      "category": "Reasoning & Constraint Validation",
+      "prompt": "Tolong buatkan rekomendasi liburan di Kabupaten Badung selama 4 hari penuh untuk...",
+      "is_success": true,
+      "final_score": 1.0,
+      "passing_score": 0.6,
+      "bonus_applied": false,
+      "tools_called": [
+        "budget_optimizer_tool"
+      ],
+      "dimensions": {
+        "D1_tool_selection": {
+          "score": 1.0,
+          "weight": "40%",
+          "result": "LULUS: Semua expected tools dipanggil: {'budget_optimizer_tool'}"
+        },
+        "D2_argument_quality": {
+          "score": 1.0,
+          "weight": "35%",
+          "result": "1/1 argumen lulus validasi.",
+          "details": [
+            {
+              "tool": "budget_optimizer_tool",
+              "arg": "budget_limit",
+              "status": "LULUS",
+              "actual": 50000,
+              "reason": "Argumen sesuai ekspektasi."
+            }
+          ]
+        },
+        "D3_response_quality": {
+          "score": 1.0,
+          "weight": "25%",
+          "result": "5/5 response quality checks lulus.",
+          "details": [
+            {
+              "type": "expected_keyword",
+              "keyword": "budget",
+              "status": "LULUS",
+              "found": true
+            },
+            {
+              "type": "expected_keyword",
+              "keyword": "50",
+              "status": "LULUS",
+              "found": true
+            },
+            {
+              "type": "forbidden_keyword",
+              "keyword": "berhasil membuat itinerary",
+              "status": "LULUS",
+              "found": false,
+              "note": ""
+            },
+            {
+              "type": "forbidden_keyword",
+              "keyword": "berikut rute anda",
+              "status": "LULUS",
+              "found": false,
+              "note": ""
+            },
+            {
+              "type": "pushback_check",
+              "status": "LULUS",
+              "reason": "Agent melakukan pushback yang tepat."
+            }
+          ]
+        }
+      },
+      "passing_criteria": "Agent melakukan pushback logis: memberitahu budget tidak cukup",
+      "raw_response_preview": "Maaf, budget 50000 tidak cukup untuk wisata rekreasi mewah selama 4 hari. Budget minimum yang dibutuhkan jauh lebih besar. Saya sarankan minimal budget 500.000 rupiah."
+    },
+    {
+      "scenario_id": 4,
+      "scenario_name": "Explainable AI — ML + Scatter Plot",
+      "category": "XAI: Multi-Tool ML + Visualization",
+      "prompt": "Coba carikan 2 tempat wisata alam di Kota Denpasar yang menarik dengan budget ma...",
+      "is_success": true,
+      "final_score": 1.0,
+      "passing_score": 0.6,
+      "bonus_applied": true,
+      "tools_called": [
+        "budget_optimizer_tool",
+        "predict_match_score",
+        "plot_itinerary_scatter"
+      ],
+      "dimensions": {
+        "D1_tool_selection": {
+          "score": 1.0,
+          "weight": "40%",
+          "result": "LULUS: Semua expected + preferred tools dipanggil: {'plot_itinerary_scatter', 'predict_match_score', 'budget_optimizer_tool'}"
+        },
+        "D2_argument_quality": {
+          "score": 1.0,
+          "weight": "35%",
+          "result": "2/2 argumen lulus validasi.",
+          "details": [
+            {
+              "tool": "budget_optimizer_tool",
+              "arg": "budget_limit",
+              "status": "LULUS",
+              "actual": 100000,
+              "reason": "Argumen sesuai ekspektasi."
+            },
+            {
+              "tool": "budget_optimizer_tool",
+              "arg": "location_keywords",
+              "status": "LULUS",
+              "actual": [
+                "Denpasar",
+                "Alam"
+              ],
+              "reason": "Argumen sesuai ekspektasi."
+            }
+          ]
+        },
+        "D3_response_quality": {
+          "score": 1.0,
+          "weight": "25%",
+          "result": "5/5 response quality checks lulus.",
+          "details": [
+            {
+              "type": "expected_keyword",
+              "keyword": "denpasar",
+              "status": "LULUS",
+              "found": true
+            },
+            {
+              "type": "expected_keyword",
+              "keyword": "alam",
+              "status": "LULUS",
+              "found": true
+            },
+            {
+              "type": "expected_keyword",
+              "keyword": "100",
+              "status": "LULUS",
+              "found": true
+            },
+            {
+              "type": "forbidden_keyword",
+              "keyword": "surabaya",
+              "status": "LULUS",
+              "found": false,
+              "note": ""
+            },
+            {
+              "type": "forbidden_keyword",
+              "keyword": "yogyakarta",
+              "status": "LULUS",
+              "found": false,
+              "note": ""
+            }
+          ]
+        }
+      },
+      "passing_criteria": "budget_optimizer_tool dipanggil dengan budget=100000 dan keywords Denpasar",
+      "raw_response_preview": "Berikut rekomendasi wisata alam di Denpasar dengan budget 100 ribu. Skor ML menunjukkan fitur utama adalah Rating dan Popularitas."
+    },
+    {
+      "scenario_id": 5,
+      "scenario_name": "EDA Filter Spesifik — Multi-Criteria",
+      "category": "Data Analysis & Filtered Query",
+      "prompt": "Tempat wisata apa saja di file data ini yang letaknya di Kabupaten Buleleng, rat...",
+      "is_success": true,
+      "final_score": 0.958,
+      "passing_score": 0.6,
+      "bonus_applied": false,
+      "tools_called": [
+        "budget_optimizer_tool"
+      ],
+      "dimensions": {
+        "D1_tool_selection": {
+          "score": 1.0,
+          "weight": "40%",
+          "result": "LULUS: Semua expected tools dipanggil: {'budget_optimizer_tool'}"
+        },
+        "D2_argument_quality": {
+          "score": 1.0,
+          "weight": "35%",
+          "result": "2/2 argumen lulus validasi.",
+          "details": [
+            {
+              "tool": "budget_optimizer_tool",
+              "arg": "location_keywords",
+              "status": "LULUS",
+              "actual": [
+                "Buleleng"
+              ],
+              "reason": "Argumen sesuai ekspektasi."
+            },
+            {
+              "tool": "budget_optimizer_tool",
+              "arg": "min_rating",
+              "status": "LULUS",
+              "actual": 4.5,
+              "reason": "Argumen sesuai ekspektasi."
+            }
+          ]
+        },
+        "D3_response_quality": {
+          "score": 0.83,
+          "weight": "25%",
+          "result": "5/6 response quality checks lulus.",
+          "details": [
+            {
+              "type": "expected_keyword",
+              "keyword": "buleleng",
+              "status": "LULUS",
+              "found": true
+            },
+            {
+              "type": "expected_keyword",
+              "keyword": "sepi",
+              "status": "LULUS",
+              "found": true
+            },
+            {
+              "type": "expected_keyword",
+              "keyword": "4.5",
+              "status": "GAGAL",
+              "found": false
+            },
+            {
+              "type": "forbidden_keyword",
+              "keyword": "paris",
+              "status": "LULUS",
+              "found": false,
+              "note": ""
+            },
+            {
+              "type": "forbidden_keyword",
+              "keyword": "tokyo",
+              "status": "LULUS",
+              "found": false,
+              "note": ""
+            },
+            {
+              "type": "forbidden_keyword",
+              "keyword": "london",
+              "status": "LULUS",
+              "found": false,
+              "note": ""
+            }
+          ]
+        }
+      },
+      "passing_criteria": "Optimizer/EDA dipanggil dengan filter Buleleng dan min_rating >= 4.5",
+      "raw_response_preview": "Tempat wisata di Buleleng dengan rating di atas 4.5 dan kategori Sepi: berikut listnya beserta Google Maps."
+    }
+  ]
+}
