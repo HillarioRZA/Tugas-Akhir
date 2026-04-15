@@ -2,14 +2,25 @@ from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_groq import ChatGroq
+from langchain_openai import ChatOpenAI
 from backend.services.memory import persistent_memory
 import json
 import base64
-from typing import Optional,List,Dict
+import os
+from typing import Optional, List, Dict
 from dotenv import load_dotenv
 load_dotenv()
-# llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash")
-llm = ChatGroq(model="openai/gpt-oss-120b")
+
+# Fix C6: Model interpretasi dibaca dari ENV — ubah di .env tanpa menyentuh kode
+# Default: openrouter/hunter-alpha via OpenRouter
+_INTERP_MODEL = os.environ.get("INTERPRETATION_MODEL", "openrouter/hunter-alpha")
+_BASE_URL     = os.environ.get("LLM_BASE_URL", "https://openrouter.ai/api/v1")
+
+llm = ChatOpenAI(
+    base_url=_BASE_URL,
+    api_key=os.environ.get("OPENROUTER_API_KEY"),
+    model=_INTERP_MODEL
+)
 
 def get_interpretation(session_id: str,tool_name: str, tool_output, image_bytes: Optional[bytes] = None,  baseline_metrics: Optional[dict] = None) -> str:
     """Fungsi interpretasi universal untuk data dan gambar."""
@@ -30,17 +41,26 @@ def get_interpretation(session_id: str,tool_name: str, tool_output, image_bytes:
         
         try:
             if isinstance(llm, ChatGroq):
-                # Khusus untuk Groq, model teks biasa tidak mendukung vision
-                # Kita harus override sementara menggunakan model vision Groq (Llama-3.2)
-                vision_llm = ChatGroq(model="llama-3.2-11b-vision-preview")
+                vision_llm = ChatGroq(model="llama-4-maverick-17b-128e-instruct")
                 response = vision_llm.invoke([message])
             else:
-                # Jika menggunakan Gemini (ChatGoogleGenerativeAI), model utamanya sudah natively support vision
                 response = llm.invoke([message])
-                
+
             return response.content
+
+        # C4 Fix: bedakan tipe error agar lebih mudah di-debug
         except Exception as e:
-            return f"Gagal membaca gambar secara spesifik. Sistem Vision saat ini tidak mendukung pembacaan grafik. Error teknis: {str(e)}"
+            err_str = str(e).lower()
+            if "api key" in err_str or "unauthorized" in err_str or "401" in err_str:
+                return "[Error C4-AUTH] API key tidak valid atau tidak memiliki akses ke model vision ini."
+            elif "timeout" in err_str or "timed out" in err_str or "connectionerror" in err_str:
+                return "[Error C4-TIMEOUT] Koneksi ke model vision timeout. Coba lagi sebentar."
+            elif "quota" in err_str or "rate limit" in err_str or "429" in err_str:
+                return "[Error C4-RATELIMIT] Rate limit API tercapai. Tunggu beberapa detik dan coba lagi."
+            elif "model" in err_str and ("not found" in err_str or "does not exist" in err_str):
+                return f"[Error C4-MODEL] Model vision tidak ditemukan: {_INTERP_MODEL}. Periksa INTERPRETATION_MODEL di .env."
+            else:
+                return f"[Error C4-UNKNOWN] Gagal membaca gambar. Detail: {str(e)}"
     else:
         output_str = json.dumps(tool_output, indent=2)
 

@@ -1,8 +1,31 @@
-from langchain.memory import ConversationBufferMemory
+from langchain.memory import ConversationBufferWindowMemory
 from typing import Dict, Any
 from backend.services.memory import persistent_memory
 
 _session_memory: Dict[str, Dict[str, Any]] = {}
+
+# ─────────────────────────────────────────────────────────────
+# SYSTEM VECTOR STORE — knowledge base bawaan dari dataset CSV
+# Shared across all sessions, diisi saat startup.
+# ─────────────────────────────────────────────────────────────
+_system_vector_store: Any = None
+
+def save_system_vector_store(vector_store: Any):
+    """Simpan system vector store (dari dataset CSV). Dipanggil saat startup."""
+    global _system_vector_store
+    _system_vector_store = vector_store
+    print("✅ [Memory] System vector store (dataset CSV) berhasil disimpan.")
+
+def get_system_vector_store() -> Any | None:
+    """Ambil system vector store. Return None jika belum diinisialisasi."""
+    return _system_vector_store
+
+def clear_system_vector_store():
+    """Hapus system vector store (untuk keperluan reload)."""
+    global _system_vector_store
+    _system_vector_store = None
+    print("⚠️  [Memory] System vector store dihapus.")
+
 
 def _get_session_data(session_id: str) -> Dict[str, Any]:
     if session_id not in _session_memory:
@@ -26,7 +49,7 @@ def clear_vector_store(session_id: str):
         _session_memory[session_id]["active_vector_store"] = None
         print(f"--- Vector Store untuk sesi {session_id} dihapus ---")
 
-def get_or_create_memory(session_id: str) -> ConversationBufferMemory:
+def get_or_create_memory(session_id: str) -> ConversationBufferWindowMemory:
     session_data = _get_session_data(session_id)
 
     if session_data.get("chat_memory") is None:
