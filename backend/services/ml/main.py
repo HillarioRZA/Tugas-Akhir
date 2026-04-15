@@ -144,11 +144,16 @@ class MatchScoreInput(BaseModel):
 def get_ml_tools(session_id: str, context: dict) -> List[Any]:
 
     def _read_current_df() -> Optional[pd.DataFrame]:
+        if "_cached_df" in context and context["_cached_df"] is not None:
+            return context["_cached_df"]
         dataset_info = persistent_memory.get_dataset_path(session_id, "__latest_csv")
         if dataset_info and os.path.exists(dataset_info["path"]):
             with open(dataset_info["path"], "rb") as f:
                 contents = f.read()
-            return _read_csv_with_fallback(contents)
+            df = _read_csv_with_fallback(contents)
+            if df is not None:
+                context["_cached_df"] = df
+            return df
         return None
 
     @tool(args_schema=MatchScoreInput)
@@ -255,6 +260,7 @@ def get_ml_tools(session_id: str, context: dict) -> List[Any]:
         # ── 6. Simpan output ke context ──
         context["last_tool_output"] = results
         context["last_tool_name"]   = "predict_match_score"
+        context.setdefault("_tool_history", []).append({"tool": "predict_match_score", "output": results})
 
         model_metrics = metadata.get("metrics", {})
 

@@ -52,10 +52,14 @@ class PlotBudgetBreakdownInput(BaseModel):
 
 def get_visualization_tools(session_id: str, context: dict) -> List[Any]:
     def _read_current_csv():
+        if "_cached_csv" in context:
+            return context["_cached_csv"]
         dataset_info = persistent_memory.get_dataset_path(session_id, "__latest_csv")
         if dataset_info and os.path.exists(dataset_info['path']):
             with open(dataset_info['path'], 'rb') as f:
-                return f.read()
+                data = f.read()
+            context["_cached_csv"] = data
+            return data
         return None
 
     def _save_figure_to_context(tool_name: str, params: dict) -> dict:

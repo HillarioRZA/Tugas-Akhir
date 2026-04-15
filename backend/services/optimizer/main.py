@@ -47,12 +47,16 @@ class OptimizerInput(BaseModel):
 
 def get_optimizer_tools(session_id: str, context: dict) -> List[Any]:
     def _get_current_df():
+        if "_cached_df" in context and context["_cached_df"] is not None:
+            return context["_cached_df"]
         dataset_info = persistent_memory.get_dataset_path(session_id, "__latest_csv")
         if dataset_info and os.path.exists(dataset_info['path']):
             try:
                 with open(dataset_info['path'], 'rb') as f:
                     contents = f.read()
                 df = _read_csv_with_fallback(contents)
+                if df is not None:
+                    context["_cached_df"] = df
                 return df
             except Exception as e:
                 print(f"Error memuat CSV untuk Optimizer: {e}")
@@ -68,6 +72,11 @@ def get_optimizer_tools(session_id: str, context: dict) -> List[Any]:
         Alat ini menggunakan perhitungan matematis deterministik untuk mencocokkan budget dan destinasi.
         Jika hasil alat ini "budget terlalu kecil", Anda WAJIB menyampaikan Logical Pushback ke pengguna.
         """
+        # BUG-8 fix: validasi input minimum
+        duration_days = max(1, duration_days)
+        # BUG-2 fix: simpan budget ke context untuk verify_output CoV
+        context["budget"] = budget_limit
+
         df = _get_current_df()
         if df is None:
             return {"error": "Dataset destinasi belum tersedia. Harap upload data CSV."}
@@ -84,6 +93,7 @@ def get_optimizer_tools(session_id: str, context: dict) -> List[Any]:
         
         if not success:
             context["last_tool_output"] = message
+            context.setdefault("_tool_history", []).append({"tool": "budget_optimizer_tool", "output": message})
             return {"status": "error", "error_message": message, "instruction": "Lakukan Logical Pushback (Tolak permintaan karena tidak masuk akal secara logis/budgets). Berikan alasan."}
             
         result_data = {
@@ -94,6 +104,7 @@ def get_optimizer_tools(session_id: str, context: dict) -> List[Any]:
         }
         
         context["last_tool_output"] = result_data
+        context.setdefault("_tool_history", []).append({"tool": "budget_optimizer_tool", "output": result_data})
         
         # Buat summary singkat antar hari untuk agent
         daily_summary_lines = []

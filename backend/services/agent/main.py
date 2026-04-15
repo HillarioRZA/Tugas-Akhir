@@ -348,7 +348,7 @@ WISTA adalah spesialis **wisata Bali dan analisis data perjalanan**. Di luar dom
         verbose=True, 
         handle_parsing_errors=True,
         return_intermediate_steps=True,
-        max_iterations=5 # Enough for: Param Extract → Optimizer → Verify → Visualise → Answer
+        max_iterations=8 # ARCH-2: Enough for RAG → ML → Optimizer → Verify → Visualise + retry room
     )
     
     try:
@@ -403,6 +403,12 @@ WISTA adalah spesialis **wisata Bali dan analisis data perjalanan**. Di luar dom
 
         return result
 
+    except KeyError as e:
+        return {"error": "Data tidak ditemukan", "detail": f"Kolom atau key yang diperlukan tidak tersedia: {str(e)}"}
+    except ValueError as e:
+        return {"error": "Nilai tidak valid", "detail": f"Input atau data memiliki format yang salah: {str(e)}"}
+    except TimeoutError:
+        return {"error": "Agent Timeout", "detail": "Agent membutuhkan waktu terlalu lama. Coba pertanyaan yang lebih sederhana."}
     except Exception as e:
         return {"error": "Gagal menjalankan agen", "detail": str(e)}
 

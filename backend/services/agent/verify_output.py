@@ -80,10 +80,11 @@ def create_verify_output_tool(context: Dict[str, Any]):
                 )
 
         # ── 3. Cek konsistensi dengan last_tool_output ──
-        last_output = context.get("last_tool_output")
-        last_name   = context.get("last_tool_name", "")
+        last_output  = context.get("last_tool_output")
+        last_name    = context.get("last_tool_name", "")
+        tool_history = context.get("_tool_history", [])
 
-        if last_output is None and any(
+        if last_output is None and not tool_history and any(
             keyword in draft_response.lower()
             for keyword in ["rekomendasi", "ditemukan", "berhasil", "itinerary"]
         ):
@@ -104,10 +105,21 @@ def create_verify_output_tool(context: Dict[str, Any]):
             )
 
         # ── 5. Cek integritas budget (jika optimizer dipanggil) ──
-        if last_name == "calculate_optimized_itinerary" and isinstance(last_output, dict):
-            total_cost = last_output.get("total_cost") or last_output.get("total_biaya")
-            budget     = context.get("budget")
-            if total_cost and budget and total_cost > budget:
+        budget = context.get("budget")
+        optimizer_output = None
+
+        # Cari output optimizer dari history atau last_name (BUG-2 + BUG-10 fix)
+        if last_name == "budget_optimizer_tool" and isinstance(last_output, dict):
+            optimizer_output = last_output
+        else:
+            for entry in tool_history:
+                if entry.get("tool") == "budget_optimizer_tool" and isinstance(entry.get("output"), dict):
+                    optimizer_output = entry["output"]
+                    break
+
+        if optimizer_output and budget:
+            total_cost = optimizer_output.get("total_biaya_kalkulasi", 0)
+            if total_cost and total_cost > budget:
                 issues.append(
                     f"PERINGATAN BUDGET: Total biaya (Rp {total_cost:,}) "
                     f"melebihi budget user (Rp {budget:,})."

@@ -53,11 +53,21 @@ async def lifespan(app: FastAPI):
     # ── Startup: Build system RAG vector store di background ──
     async def _build_rag_in_background():
         """
-        Bangun system vector store dari dataset CSV secara async di background.
-        Server tidak perlu menunggu proses embedding selesai (bisa 30-60 detik).
-        RAG akan tersedia setelah proses ini selesai.
+        LIM-6: Coba muat FAISS dari disk terlebih dahulu (near-instant).
+        Jika tidak ada cache disk, build dari API embedding (30-60 detik).
         """
-        print("🔄 [Startup] Memulai indexing dataset ke system RAG vector store...")
+        from backend.services.rag.dataset_indexer import load_system_vector_store_from_disk
+
+        # LIM-6: Coba load dari disk terlebih dahulu
+        print("🔄 [Startup] Mencoba memuat FAISS index dari disk...")
+        vector_store = load_system_vector_store_from_disk()
+        if vector_store:
+            save_system_vector_store(vector_store)
+            print("✅ [Startup] System RAG vector store dimuat dari disk (near-instant).")
+            return
+
+        # Fallback: build dari API embedding
+        print("🔄 [Startup] Tidak ada cache disk. Memulai indexing dataset ke RAG vector store...")
         print("   (Proses berjalan di background, server sudah siap menerima request)")
         try:
             loop = asyncio.get_event_loop()

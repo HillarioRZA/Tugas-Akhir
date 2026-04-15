@@ -60,8 +60,10 @@ from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score,
-    f1_score, roc_auc_score, classification_report
+    f1_score, roc_auc_score, classification_report,
+    brier_score_loss
 )
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
@@ -278,21 +280,48 @@ def train_and_save():
     model.fit(X_train_proc, y_train)
     print(f"      -> Selesai!")
 
+    # ── Feature Importance (base model, SEBELUM kalibrasi) ──
+    feature_names_out   = preprocessor.get_feature_names_out()
+    base_importances    = model.feature_importances_.copy()
+    grouped_fi          = compute_grouped_importance(feature_names_out, base_importances, ALL_FEATURES)
+
+    # ── 6b. Kalibrasi Probabilitas — Platt Scaling (LIM-5 fix) ──
+    print(f"\n[6b/8] Kalibrasi probabilitas (Platt Scaling / Sigmoid)...")
+    calibrated_model = CalibratedClassifierCV(
+        estimator=model,
+        method='sigmoid',
+        cv=3,
+        n_jobs=-1
+    )
+    calibrated_model.fit(X_train_proc, y_train)
+    print(f"      -> Kalibrasi selesai (3-fold Sigmoid).")
+
     # ── 7. Evaluasi ──
     print(f"\n[7/8] Evaluasi pada test set:")
-    y_pred      = model.predict(X_test_proc)
-    y_pred_prob = model.predict_proba(X_test_proc)[:, 1]
+    y_pred            = model.predict(X_test_proc)
+    y_pred_prob_base  = model.predict_proba(X_test_proc)[:, 1]
+    y_pred_prob_cal   = calibrated_model.predict_proba(X_test_proc)[:, 1]
+
+    # Brier Score (mengukur kualitas kalibrasi — lower is better)
+    brier_base       = round(float(brier_score_loss(y_test, y_pred_prob_base)), 4)
+    brier_calibrated = round(float(brier_score_loss(y_test, y_pred_prob_cal)), 4)
 
     metrics = {
         "accuracy":  round(float(accuracy_score(y_test,  y_pred)), 4),
         "precision": round(float(precision_score(y_test, y_pred, zero_division=0)), 4),
         "recall":    round(float(recall_score(y_test,    y_pred, zero_division=0)), 4),
         "f1_score":  round(float(f1_score(y_test,        y_pred, zero_division=0)), 4),
-        "roc_auc":   round(float(roc_auc_score(y_test,   y_pred_prob)), 4),
+        "roc_auc":   round(float(roc_auc_score(y_test,   y_pred_prob_base)), 4),
+        "brier_score_base":       brier_base,
+        "brier_score_calibrated": brier_calibrated,
+        "calibration_method":     "Platt Scaling (Sigmoid, 3-fold CV)",
     }
 
     for metric_name, value in metrics.items():
-        print(f"      {metric_name:<12}: {value:.4f} ({value*100:.1f}%)")
+        if isinstance(value, float):
+            print(f"      {metric_name:<25}: {value:.4f}")
+        else:
+            print(f"      {metric_name:<25}: {value}")
 
     print(f"\n      Classification Report:")
     report_lines = classification_report(
@@ -304,18 +333,14 @@ def train_and_save():
     cv_scores = cross_val_score(model, X_train_proc, y_train, cv=5, scoring="f1")
     print(f"\n      5-Fold CV F1: {cv_scores.mean():.4f} +/- {cv_scores.std():.4f}")
 
-    # ── Feature Importance ──
-    feature_names_out = preprocessor.get_feature_names_out()
-    importances       = model.feature_importances_
-    grouped_fi        = compute_grouped_importance(feature_names_out, importances, ALL_FEATURES)
-
+    # ── Feature Importance (dari base_importances) ──
     print(f"\n      Feature Importance (grouped):")
     for feat, imp in grouped_fi.items():
         print(f"      {feat:<25}: {imp:.4f} ({imp*100:.1f}%)")
 
     top_10_raw = sorted(
         [{"feature": f, "importance": round(float(i), 4)}
-         for f, i in zip(feature_names_out, importances)],
+         for f, i in zip(feature_names_out, base_importances)],
         key=lambda x: x["importance"], reverse=True
     )[:10]
 
@@ -348,9 +373,9 @@ def train_and_save():
         "trained_at":               trained_at,
     }
 
-    joblib.dump(model,        MODEL_PATH)
-    joblib.dump(preprocessor, PREPROCESSOR_PATH)
-    joblib.dump(metadata,     METADATA_PATH)
+    joblib.dump(calibrated_model, MODEL_PATH)   # LIM-5: simpan model terkalibrasi
+    joblib.dump(preprocessor,      PREPROCESSOR_PATH)
+    joblib.dump(metadata,          METADATA_PATH)
 
     print(f"      -> {MODEL_PATH.name} ({MODEL_PATH.stat().st_size / 1024:.1f} KB)")
     print(f"      -> {PREPROCESSOR_PATH.name} ({PREPROCESSOR_PATH.stat().st_size:.0f} bytes)")

@@ -1,4 +1,5 @@
 import math
+import numpy as np
 import pandas as pd
 from typing import List, Dict, Any, Tuple, Optional
 
@@ -11,6 +12,80 @@ MAX_PLACES_PER_DAY   = 3    # Maks destinasi per hari
 AVERAGE_SPEED_KMH    = 30   # Kecepatan rata-rata kendaraan di Bali (km/h), kondisi jalan lokal
 VISIT_DURATION_MIN   = 90   # Estimasi durasi kunjungan per tempat (menit)
 START_HOUR           = 9    # Jam mulai kunjungan (09:00)
+
+
+# ─────────────────────────────────────────────────────────────
+# AHP WEIGHT CALCULATION (LIM-7)
+# Referensi: Saaty, T.L. (1980). The Analytic Hierarchy Process.
+# ─────────────────────────────────────────────────────────────
+
+def calculate_ahp_weights() -> Dict[str, Any]:
+    """
+    Hitung bobot komposit menggunakan Analytic Hierarchy Process (AHP).
+
+    Pairwise comparison matrix (skala Saaty 1-9):
+    Kriteria: Rating, Value for Money, Crowd Density
+
+    Judgments (berdasarkan domain knowledge pariwisata Bali):
+    - Rating vs Value    : 3 (Rating moderately more important — kualitas pengalaman
+                              adalah indikator utama kepuasan wisatawan)
+    - Rating vs Crowd    : 5 (Rating strongly more important — wisatawan memprioritaskan
+                              kualitas destinasi di atas level keramaian)
+    - Value vs Crowd     : 2 (Value slightly more important — efisiensi budget lebih
+                              diprioritaskan daripada kenyamanan kerumunan)
+
+    Returns:
+        Dict berisi weights, lambda_max, CI, CR, dan metadata AHP.
+    """
+    # Matriks perbandingan berpasangan (Saaty scale)
+    A = np.array([
+        [1,     3,     5   ],   # Rating vs [Rating, Value, Crowd]
+        [1/3,   1,     2   ],   # Value  vs [Rating, Value, Crowd]
+        [1/5,   1/2,   1   ],   # Crowd  vs [Rating, Value, Crowd]
+    ])
+    criteria = ["Rating", "Value_for_Money", "Crowd_Density"]
+
+    # Normalisasi kolom
+    col_sums = A.sum(axis=0)
+    A_norm   = A / col_sums
+
+    # Priority vector = rata-rata per baris
+    weights = A_norm.mean(axis=1)
+
+    # Konsistensi (Consistency Ratio)
+    n          = len(criteria)
+    Aw         = A @ weights
+    lambda_max = float(np.mean(Aw / weights))
+    CI         = (lambda_max - n) / (n - 1)
+    RI_table   = {1: 0.0, 2: 0.0, 3: 0.58, 4: 0.90, 5: 1.12, 6: 1.24, 7: 1.32}
+    CR         = CI / RI_table[n]
+
+    return {
+        "criteria":    criteria,
+        "weights":     dict(zip(criteria, np.round(weights, 4).tolist())),
+        "W_RATING":    round(float(weights[0]), 4),
+        "W_VALUE":     round(float(weights[1]), 4),
+        "W_CROWD":     round(float(weights[2]), 4),
+        "lambda_max":  round(float(lambda_max), 4),
+        "CI":          round(float(CI), 6),
+        "CR":          round(float(CR), 6),
+        "consistent":  CR < 0.10,
+        "method":      "Analytic Hierarchy Process (Saaty, 1980)",
+        "pairwise_judgments": {
+            "Rating_vs_Value": "3 (Rating moderately more important)",
+            "Rating_vs_Crowd": "5 (Rating strongly more important)",
+            "Value_vs_Crowd":  "2 (Value slightly more important)",
+        },
+    }
+
+
+# Hitung bobot AHP sekali saat modul di-import
+_AHP_RESULT = calculate_ahp_weights()
+
+# Bobot komposit — diturunkan dari AHP, bukan heuristik
+W_RATING = _AHP_RESULT["W_RATING"]   # ≈ 0.6483
+W_VALUE  = _AHP_RESULT["W_VALUE"]    # ≈ 0.2297
+W_CROWD  = _AHP_RESULT["W_CROWD"]    # ≈ 0.1220
 
 
 # ─────────────────────────────────────────────────────────────
@@ -306,6 +381,10 @@ def calculate_optimized_itinerary(
                            (None jika gagal)
     """
 
+    # ── Validasi input ─────────────────────────────────────
+    duration_days = max(1, int(duration_days))
+    budget_limit  = max(0, int(budget_limit))
+
     # ── STEP A: Filter Rating ──────────────────────────────
     if "Rating" in df.columns:
         filtered_df = df[df["Rating"] >= min_rating].copy()
@@ -372,18 +451,14 @@ def calculate_optimized_itinerary(
     price_col  = price_cols[0]
     rating_col = rating_cols[0] if rating_cols else None
 
-    # ── STEP D: Multi-Objective Composite Score ────────────
-    # Bobot (dapat disesuaikan):
-    #   50% Rating     → kualitas pengalaman dominan
-    #   30% Value      → 1 - harga_normalisasi (makin murah, makin tinggi)
-    #   20% Crowd      → preferensi ketenangan (Sepi > Sedang > Ramai)
+    # ── STEP D: Multi-Objective Composite Score (AHP-weighted) ────────────
+    # Bobot diturunkan dari Analytic Hierarchy Process (Saaty, 1980):
+    #   W_RATING ≈ 0.6483 → kualitas pengalaman (dominan)
+    #   W_VALUE  ≈ 0.2297 → value for money (efisiensi budget)
+    #   W_CROWD  ≈ 0.1220 → preferensi ketenangan
     #
-    # Sebelumnya: hanya Rating DESC + Price ASC (single-objective)
-    # Sekarang  : composite score multi-kriteria → pilihan lebih seimbang
-
-    W_RATING = 0.50
-    W_VALUE  = 0.30
-    W_CROWD  = 0.20
+    # CR = 0.003 < 0.10 → konsisten (lihat calculate_ahp_weights())
+    # Menggunakan module-level W_RATING, W_VALUE, W_CROWD dari AHP
 
     # Normalisasi Rating (0-1)
     if rating_col and filtered_df[rating_col].max() > filtered_df[rating_col].min():

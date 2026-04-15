@@ -5,7 +5,7 @@ import os
 from fastapi import APIRouter, HTTPException, Body, UploadFile, File, Form, Header
 from fastapi.responses import StreamingResponse
 from fastapi.responses import Response, JSONResponse
-from backend.services.eda import main as eda_main
+import asyncio
 from backend.services.agent import main as agent_main
 
 from typing import Optional,List,Dict
@@ -61,12 +61,29 @@ async def execute_agent_action(
             if not (new_dataset_name.endswith('.csv') or new_dataset_name.endswith('.pdf')):
                 raise HTTPException(status_code=400, detail="Format file tidak valid. Harap unggah file CSV atau PDF.")
     
-    result = agent_main.run_agent_flow(
-        session_id=session_id, 
-        prompt=prompt, 
-        new_file_path=new_file_path, 
-        new_dataset_name=new_dataset_name 
-    )
+    try:
+        result = await asyncio.wait_for(
+            asyncio.to_thread(
+                agent_main.run_agent_flow,
+                session_id,
+                prompt,
+                new_file_path,
+                new_dataset_name,
+            ),
+            timeout=120.0  # ARCH-1 fix: 120 detik global timeout
+        )
+    except asyncio.TimeoutError:
+        return JSONResponse(
+            status_code=504,
+            content={
+                "error": "Agent Timeout",
+                "detail": (
+                    "Agent tidak merespons dalam 120 detik. "
+                    "Coba lagi dengan pertanyaan yang lebih sederhana atau periksa koneksi API."
+                ),
+                "session_id": session_id,
+            }
+        )
     
     if "error" in result:
         raise HTTPException(status_code=500, detail=result.get("detail", result["error"]))
@@ -75,61 +92,8 @@ async def execute_agent_action(
     final_response["session_id"] = session_id
     return JSONResponse(content=final_response)
 
-@router.post("/custom-visualize", response_class=JSONResponse)
-async def create_custom_visualization(
-    prompt: str = Form(...),
-    file: Optional[UploadFile] = File(None),
-    x_session_id: Optional[str] = Header(None, alias="X-Session-ID")
-):
-    if not x_session_id:
-        session_id = str(uuid.uuid4())
-    else:
-        session_id = x_session_id
-
-    contents = None
-    file_type = None
-
-    if file and file.filename:
-        if file.filename.endswith('.csv'):
-            file_type = 'csv'
-            contents = await file.read()
-        else:
-            raise HTTPException(status_code=400, detail="Hanya file CSV yang didukung untuk visualisasi kustom.")
-    
-    if not contents:
-         raise HTTPException(status_code=400, detail="File CSV dibutuhkan untuk membuat visualisasi kustom.")
-
-    plot_plan = agent_main.get_plot_plan(prompt)
-    if "error" in plot_plan:
-        raise HTTPException(status_code=500, detail=plot_plan.get("detail", plot_plan["error"]))
-
-    image_bytes = eda_main.generate_custom_plot(
-        file_contents=contents,
-        plot_type=plot_plan.get("plot_type"),
-        x_col=plot_plan.get("x_col"),
-        y_col=plot_plan.get("y_col"),
-        hue_col=plot_plan.get("hue_col"),
-        orientation=plot_plan.get("orientation", 'v')
-    )
-
-    if isinstance(image_bytes, str):
-        raise HTTPException(status_code=500, detail=f"Gagal membuat plot: {image_bytes}")
-
-    from backend.services.agent.interpretation import get_interpretation
-    summary = get_interpretation(
-        session_id=session_id,
-        tool_name=plot_plan.get("plot_type", "custom plot"),
-        tool_output=plot_plan,
-        image_bytes=image_bytes
-    )
-
-    image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-
-    final_response = {
-        "plan": plot_plan,
-        "summary": summary,
-        "image_base64": image_b64,
-        "image_format": "png",
-        "session_id": session_id
-    }
-    return JSONResponse(content=final_response)
+# Endpoint /custom-visualize dihapus (BUG-1 fix).
+# generate_custom_plot sudah tidak tersedia di eda/main.py.
+# Gunakan 5 visualization tools via Agent: plot_itinerary_scatter,
+# plot_distribution_histogram, plot_category_bar, plot_correlation_heatmap,
+# plot_budget_breakdown.

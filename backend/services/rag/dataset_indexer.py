@@ -15,12 +15,18 @@ yang dapat di-query oleh rag_semantic_filter.
 import os
 import time
 import pandas as pd
+from pathlib import Path
 from typing import Optional
 from langchain_community.vectorstores import FAISS
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# LIM-6: Path untuk persisten FAISS index ke disk
+_THIS_FILE     = Path(__file__).resolve()
+_PROJECT_ROOT  = _THIS_FILE.parent.parent.parent.parent
+FAISS_SAVE_DIR = _PROJECT_ROOT / "saved_vectorstores" / "system_faiss"
 
 # Status tracking untuk endpoint /rag/status dan /rag/rebuild
 build_status: dict = {
@@ -211,6 +217,15 @@ def build_system_vector_store(csv_path: str, max_retries: int = 3):
         build_status["state"]    = "ready"
         build_status["built_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         print(f"✅ [Dataset Indexer] System vector store berhasil dibuat.")
+
+        # LIM-6: Persist FAISS index ke disk agar survive restart
+        try:
+            FAISS_SAVE_DIR.mkdir(parents=True, exist_ok=True)
+            vector_store.save_local(str(FAISS_SAVE_DIR))
+            print(f"✅ [Dataset Indexer] FAISS index disimpan ke disk: {FAISS_SAVE_DIR}")
+        except Exception as save_err:
+            print(f"⚠️  [Dataset Indexer] Gagal menyimpan FAISS ke disk: {save_err}")
+
         return vector_store
 
     except Exception as e:
@@ -218,3 +233,28 @@ def build_system_vector_store(csv_path: str, max_retries: int = 3):
         build_status["error"] = str(e)
         print(f"❌ [Dataset Indexer] Gagal membuat vector store: {e}")
         return None
+
+
+def load_system_vector_store_from_disk():
+    """
+    LIM-6: Coba muat FAISS index dari disk (jika pernah di-build sebelumnya).
+    Ini menghindari rebuild 30-60 detik saat server restart.
+
+    Returns:
+        FAISS vector store, atau None jika tidak ada di disk.
+    """
+    if FAISS_SAVE_DIR.exists() and (FAISS_SAVE_DIR / "index.faiss").exists():
+        try:
+            embeddings = _get_embeddings()
+            vector_store = FAISS.load_local(
+                str(FAISS_SAVE_DIR),
+                embeddings,
+                allow_dangerous_deserialization=True
+            )
+            build_status["state"]    = "ready"
+            build_status["built_at"] = "loaded_from_disk"
+            print(f"✅ [Dataset Indexer] FAISS index dimuat dari disk: {FAISS_SAVE_DIR}")
+            return vector_store
+        except Exception as e:
+            print(f"⚠️  [Dataset Indexer] Gagal memuat FAISS dari disk: {e}")
+    return None
