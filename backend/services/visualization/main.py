@@ -2,6 +2,8 @@ import os
 import pandas as pd
 import numpy as np
 import io
+import matplotlib
+matplotlib.use("Agg")  # Non-interactive backend — no tkinter, thread-safe
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import seaborn as sns
@@ -11,7 +13,6 @@ from pydantic import BaseModel, Field
 from backend.utils.read_csv import _read_csv_with_fallback
 from backend.services.memory import persistent_memory
 
-# ── Style global untuk semua chart ───────────────────────────────────────────
 sns.set_theme(style="darkgrid", palette="muted")
 plt.rcParams["figure.facecolor"] = "#1e1e2e"
 plt.rcParams["axes.facecolor"]   = "#2a2a3e"
@@ -42,7 +43,7 @@ class PlotCategoryInput(BaseModel):
     )
 
 class PlotCorrelationInput(BaseModel):
-    pass  # Tidak perlu parameter, auto-detect kolom numerik
+    pass
 
 class PlotBudgetBreakdownInput(BaseModel):
     selected_destinations: list[str] = Field(
@@ -71,7 +72,11 @@ def get_visualization_tools(session_id: str, context: dict) -> List[Any]:
         context["last_image_bytes"]  = img_buffer.getvalue()
         context["last_tool_name"]    = tool_name
         context["last_tool_params"]  = params
-        return {"status": "success", "summary": f"Chart '{tool_name}' berhasil dibuat.", "instruction": "Kirimkan narasi insight dari chart yang baru saja digambar."}
+        return {
+            "status": "success",
+            "summary": f"Chart '{tool_name}' berhasil dibuat dan sudah dikirim ke pengguna.",
+            "note": "Chart sudah selesai di-render. JANGAN panggil tool visualisasi lagi. Lanjutkan ke langkah berikutnya atau berikan Final Answer.",
+        }
 
     def _find_col(df: pd.DataFrame, *keywords) -> Optional[str]:
         """Cari nama kolom yang mengandung salah satu keyword (case insensitive)."""
@@ -81,9 +86,6 @@ def get_visualization_tools(session_id: str, context: dict) -> List[Any]:
                     return col
         return None
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # TOOL 1: Scatter Plot XAI — Harga vs Rating (existing, direfaktor)
-    # ──────────────────────────────────────────────────────────────────────────
     @tool(args_schema=PlotItineraryInput)
     def plot_itinerary_scatter(selected_destinations: list[str]) -> dict:
         """
@@ -118,13 +120,20 @@ def get_visualization_tools(session_id: str, context: dict) -> List[Any]:
                 ax.scatter(selected[price_col], selected[rating_col],
                            color="#cba6f7", s=160, edgecolors="#f5c2e7",
                            linewidths=2, zorder=5, label="✅ Rekomendasi Itinerary")
-                for _, row in selected.iterrows():
+                for idx, (_, row) in enumerate(selected.iterrows()):
+                    label = row[name_col]
+                    if len(label) > 25:
+                        label = label[:22] + "..."
+                    # Alternate offsets to avoid overlap (spread vertically)
+                    y_offset = 10 + (idx % 3) * 14
+                    x_offset = 8 if idx % 2 == 0 else -8
+                    ha = "left" if x_offset > 0 else "right"
                     ax.annotate(
-                        row[name_col],
+                        label,
                         (row[price_col], row[rating_col]),
-                        textcoords="offset points", xytext=(6, 6),
-                        fontsize=8.5, color="#cdd6f4",
-                        arrowprops=dict(arrowstyle="->", color="#89b4fa", lw=0.8)
+                        textcoords="offset points", xytext=(x_offset, y_offset),
+                        fontsize=7.5, color="#cdd6f4", ha=ha,
+                        arrowprops=dict(arrowstyle="->", color="#89b4fa", lw=0.6)
                     )
 
             ax.set_title("🔍 XAI: Mengapa Destinasi Ini Dipilih? (Rating vs Harga)", fontsize=14, color="#cba6f7", pad=15)
@@ -138,9 +147,6 @@ def get_visualization_tools(session_id: str, context: dict) -> List[Any]:
             plt.close()
             return {"error": f"Error membuat scatter plot: {e}"}
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # TOOL 2: Histogram Distribusi — distribusi kolom numerik + KDE curve
-    # ──────────────────────────────────────────────────────────────────────────
     @tool(args_schema=PlotDistributionInput)
     def plot_distribution_histogram(column: str) -> dict:
         """
@@ -155,7 +161,6 @@ def get_visualization_tools(session_id: str, context: dict) -> List[Any]:
             df = _read_csv_with_fallback(file_contents)
             if df is None: return {"error": "Gagal membaca file CSV."}
 
-            # Cari kolom yang cocok (fuzzy)
             target_col = None
             for col in df.columns:
                 if column.lower() in col.lower() or col.lower() in column.lower():
@@ -172,7 +177,6 @@ def get_visualization_tools(session_id: str, context: dict) -> List[Any]:
 
             ax.hist(data, bins=40, color="#89b4fa", alpha=0.7, edgecolor="#45475a", label="Frekuensi")
 
-            # KDE overlay
             try:
                 from scipy.stats import gaussian_kde
                 kde = gaussian_kde(data)
@@ -182,7 +186,6 @@ def get_visualization_tools(session_id: str, context: dict) -> List[Any]:
             except ImportError:
                 pass
 
-            # Garis mean & median
             ax.axvline(data.mean(),   color="#a6e3a1", lw=2, linestyle="--", label=f"Mean: {data.mean():.2f}")
             ax.axvline(data.median(), color="#fab387", lw=2, linestyle=":",  label=f"Median: {data.median():.2f}")
 
@@ -200,9 +203,6 @@ def get_visualization_tools(session_id: str, context: dict) -> List[Any]:
             plt.close()
             return {"error": f"Error membuat histogram: {e}"}
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # TOOL 3: Bar Chart Top Kategori/Kota — frekuensi per kategori atau kota
-    # ──────────────────────────────────────────────────────────────────────────
     @tool(args_schema=PlotCategoryInput)
     def plot_category_bar(category_column: str = "Category", top_n: int = 10) -> dict:
         """
@@ -218,7 +218,6 @@ def get_visualization_tools(session_id: str, context: dict) -> List[Any]:
             df = _read_csv_with_fallback(file_contents)
             if df is None: return {"error": "Gagal membaca file CSV."}
 
-            # Fuzzy match kolom
             target_col = None
             for col in df.columns:
                 if category_column.lower() in col.lower():
@@ -236,7 +235,6 @@ def get_visualization_tools(session_id: str, context: dict) -> List[Any]:
                            color=_ACCENT_COLORS * (top_n // len(_ACCENT_COLORS) + 1),
                            edgecolor="#1e1e2e", linewidth=0.8)
 
-            # Label nilai di dalam bar
             for bar in bars:
                 w = bar.get_width()
                 ax.text(w + 5, bar.get_y() + bar.get_height() / 2,
@@ -256,9 +254,6 @@ def get_visualization_tools(session_id: str, context: dict) -> List[Any]:
             plt.close()
             return {"error": f"Error membuat bar chart: {e}"}
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # TOOL 4: Correlation Heatmap — korelasi antar kolom numerik
-    # ──────────────────────────────────────────────────────────────────────────
     @tool(args_schema=PlotCorrelationInput)
     def plot_correlation_heatmap() -> dict:
         """
@@ -279,7 +274,7 @@ def get_visualization_tools(session_id: str, context: dict) -> List[Any]:
                 return {"error": "Tidak cukup kolom numerik untuk menghitung korelasi (minimal 2)."}
 
             corr = num_df.corr()
-            mask = np.triu(np.ones_like(corr, dtype=bool))  # Tampilkan hanya segitiga bawah
+            mask = np.triu(np.ones_like(corr, dtype=bool))
 
             fig, ax = plt.subplots(figsize=(max(8, len(corr) * 1.2), max(6, len(corr) * 1.0)))
             fig.patch.set_facecolor("#1e1e2e")
@@ -312,9 +307,6 @@ def get_visualization_tools(session_id: str, context: dict) -> List[Any]:
             plt.close()
             return {"error": f"Error membuat heatmap: {e}"}
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # TOOL 5: Pie Chart Budget Breakdown — alokasi budget per destinasi terpilih
-    # ──────────────────────────────────────────────────────────────────────────
     @tool(args_schema=PlotBudgetBreakdownInput)
     def plot_budget_breakdown(selected_destinations: list[str]) -> dict:
         """
@@ -368,7 +360,6 @@ def get_visualization_tools(session_id: str, context: dict) -> List[Any]:
                 fontsize=14, color="#cba6f7", pad=20
             )
 
-            # Legend dengan nilai rupiah
             legend_labels = [f"{row[name_col]}: Rp {int(row[price_col]):,}" for _, row in selected.iterrows()]
             ax.legend(legend_labels, loc="lower center", bbox_to_anchor=(0.5, -0.12),
                       ncol=2, fontsize=9, facecolor="#313244", labelcolor="#cdd6f4")
@@ -379,9 +370,9 @@ def get_visualization_tools(session_id: str, context: dict) -> List[Any]:
             return {"error": f"Error membuat pie chart budget: {e}"}
 
     return [
-        plot_itinerary_scatter,        # Tool 1 — scatter XAI (existing, refactored)
-        plot_distribution_histogram,   # Tool 2 — histogram + KDE (NEW)
-        plot_category_bar,             # Tool 3 — bar chart top kategori/kota (NEW)
-        plot_correlation_heatmap,      # Tool 4 — heatmap korelasi (NEW)
-        plot_budget_breakdown,         # Tool 5 — pie chart budget breakdown (NEW)
+        plot_itinerary_scatter,
+        plot_distribution_histogram,
+        plot_category_bar,
+        plot_correlation_heatmap,
+        plot_budget_breakdown,
     ]

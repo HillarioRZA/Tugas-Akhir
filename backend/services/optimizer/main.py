@@ -68,13 +68,11 @@ def get_optimizer_tools(session_id: str, context: dict) -> List[Any]:
         """
         Tool wajib untuk merancang itinerary perjalanan!
         SELALU gunakan alat ini SETELAH Anda mendapatkan daftar kata kunci.
-        PENTING: JANGAN MENGARANG/BERHALUSINASI ANGKA! Ekstrak angka BUDGET (contoh: '400.000' -> 400000) dan DURASI hari secara eksak dari prompt pengguna terbaru.
+        PENTING: JANGAN MENGARANG/BERHALUSINASI ANGKA! Ekstrak angka BUDGET (konversi ke integer) dan DURASI hari secara eksak dari prompt pengguna terbaru.
         Alat ini menggunakan perhitungan matematis deterministik untuk mencocokkan budget dan destinasi.
         Jika hasil alat ini "budget terlalu kecil", Anda WAJIB menyampaikan Logical Pushback ke pengguna.
         """
-        # BUG-8 fix: validasi input minimum
         duration_days = max(1, duration_days)
-        # BUG-2 fix: simpan budget ke context untuk verify_output CoV
         context["budget"] = budget_limit
 
         df = _get_current_df()
@@ -99,14 +97,14 @@ def get_optimizer_tools(session_id: str, context: dict) -> List[Any]:
         result_data = {
             "pesan": message,
             "total_biaya_kalkulasi": total_cost,
-            "rekomendasi_itinerary": recommendations,          # flat list (backward compat)
-            "itinerary_per_hari": daily_structure,             # struktur per hari + geografi
+            "budget_limit": budget_limit,
+            "rekomendasi_itinerary": recommendations, 
+            "itinerary_per_hari": daily_structure,
         }
         
         context["last_tool_output"] = result_data
         context.setdefault("_tool_history", []).append({"tool": "budget_optimizer_tool", "output": result_data})
         
-        # Buat summary singkat antar hari untuk agent
         daily_summary_lines = []
         if daily_structure:
             for day_key in sorted(k for k in daily_structure if k.startswith("hari_")):

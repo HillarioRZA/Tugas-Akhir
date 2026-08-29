@@ -25,12 +25,6 @@ from __future__ import annotations
 import re
 from typing import List, Dict, Any, Optional, Tuple
 
-
-# ─────────────────────────────────────────────────────────────
-# TEST QUERIES — Ground Truth untuk Sistem Wisata Bali
-# Setiap query punya expected_keywords yang menentukan relevansi
-# ─────────────────────────────────────────────────────────────
-
 RAG_EVAL_QUERIES: List[Dict[str, Any]] = [
     {
         "query": "wisata alam",
@@ -74,11 +68,6 @@ RAG_EVAL_QUERIES: List[Dict[str, Any]] = [
     },
 ]
 
-
-# ─────────────────────────────────────────────────────────────
-# RELEVANCE JUDGE
-# ─────────────────────────────────────────────────────────────
-
 def _is_relevant(doc_text: str, expected_keywords: List[str]) -> bool:
     """
     Tentukan apakah dokumen relevan terhadap query.
@@ -95,11 +84,6 @@ def _rank_of_first_relevant(docs: List[str], keywords: List[str]) -> Optional[in
         if _is_relevant(doc, keywords):
             return rank
     return None
-
-
-# ─────────────────────────────────────────────────────────────
-# CORE METRICS
-# ─────────────────────────────────────────────────────────────
 
 def precision_at_k(retrieved_docs: List[str], expected_keywords: List[str], k: int) -> float:
     """
@@ -132,11 +116,10 @@ def recall_at_k(retrieved_docs: List[str], expected_keywords: List[str], k: int,
     if total_corpus_docs:
         total_relevant = sum(1 for doc in total_corpus_docs if _is_relevant(doc, expected_keywords))
     else:
-        # Estimasi konservatif: gunakan seluruh retrieved set
         total_relevant = sum(1 for doc in retrieved_docs if _is_relevant(doc, expected_keywords))
 
     if total_relevant == 0:
-        return 1.0  # Tidak ada yang relevan → recall trivially 1.0 (vacuously true)
+        return 1.0 
     return round(relevant_in_topk / total_relevant, 4)
 
 
@@ -160,11 +143,6 @@ def hit_rate_at_k(retrieved_docs: List[str], expected_keywords: List[str], k: in
     Binary metric — berguna sebagai sanity check.
     """
     return any(_is_relevant(doc, expected_keywords) for doc in retrieved_docs[:k])
-
-
-# ─────────────────────────────────────────────────────────────
-# MAIN EVALUATOR
-# ─────────────────────────────────────────────────────────────
 
 def evaluate_rag_retrieval(
     vector_store,
@@ -196,7 +174,6 @@ def evaluate_rag_retrieval(
         expected_keywords = q["expected_keywords"]
         description      = q.get("description", query_text)
 
-        # Retrieve top-K documents dari vector store
         try:
             docs_and_scores = vector_store.similarity_search_with_score(query_text, k=k)
             retrieved_texts = [doc.page_content for doc, _score in docs_and_scores]
@@ -217,7 +194,6 @@ def evaluate_rag_retrieval(
         rr     = reciprocal_rank(retrieved_texts, expected_keywords)
         hit    = hit_rate_at_k(retrieved_texts, expected_keywords, k)
 
-        # Top-1 snippet untuk transparansi
         top1_snippet = retrieved_texts[0][:120] if retrieved_texts else ""
 
         per_query_results.append({
@@ -232,7 +208,6 @@ def evaluate_rag_retrieval(
             "top1_snippet":      top1_snippet,
         })
 
-    # ── Macro Average (semua query) ──
     valid = [r for r in per_query_results if "error" not in r]
     n = len(valid)
 
@@ -277,11 +252,5 @@ def evaluate_rag_retrieval(
             "mrr":               macro_mrr,
             "hit_rate_at_k":     macro_hit,
         },
-        "interpretation": interpretation,
-        "academic_note": (
-            "Metrik ini menggunakan Pseudo Relevance Judgement karena tidak tersedia "
-            "annotated ground truth dataset. Relevansi ditentukan via keyword matching "
-            "antara query intent dengan konten dokumen (Manning et al., 2008). "
-            "Metrik ini standar digunakan untuk evaluasi retrieval IR pada penelitian akademis."
-        ),
+        "interpretation": interpretation
     }

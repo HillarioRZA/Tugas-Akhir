@@ -36,12 +36,10 @@ def get_rag_tools(session_id: str, context: dict, llm: Any) -> List[Any]:
         Returns:
             (vector_store, source_label)
         """
-        # Layer 1: Cek user vector store
         user_vs = memory_manager.get_vector_store(session_id)
         if user_vs is not None:
             return user_vs, "user_pdf"
 
-        # Layer 2: Fallback ke system vector store (dataset CSV)
         system_vs = memory_manager.get_system_vector_store()
         if system_vs is not None:
             return system_vs, "system_dataset"
@@ -94,7 +92,6 @@ def get_rag_tools(session_id: str, context: dict, llm: Any) -> List[Any]:
         vector_store, source = _get_active_vector_store()
 
         if vector_store is None:
-            # Fallback graceful: sistem belum siap (indexing masih berjalan)
             return {
                 "status": "fallback",
                 "summary": "Knowledge base RAG sedang diinisialisasi. Menggunakan keyword langsung dari preferensi pengguna.",
@@ -103,7 +100,6 @@ def get_rag_tools(session_id: str, context: dict, llm: Any) -> List[Any]:
                 "source": "direct_extraction"
             }
 
-        # ── Craft extraction prompt ──────────────────────────────────────────
         if source == "user_pdf":
             source_context = "dokumen referensi wisata yang diunggah pengguna"
         else:
@@ -125,8 +121,6 @@ def get_rag_tools(session_id: str, context: dict, llm: Any) -> List[Any]:
 
         if isinstance(answer_raw, str) and answer_raw.startswith("Error:"):
             return {"error": "Gagal menjalankan RAG semantic filter.", "detail": answer_raw}
-
-        # ── Parse hasil LLM ke list keywords ────────────────────────────────
         clean_json_str = answer_raw.replace('```json', '').replace('```', '').strip()
 
         try:
@@ -136,7 +130,6 @@ def get_rag_tools(session_id: str, context: dict, llm: Any) -> List[Any]:
         except json.JSONDecodeError:
             keywords = [chunk.strip() for chunk in clean_json_str.split(',')]
 
-        # Bersihkan keyword kosong
         keywords = [k for k in keywords if k and k.strip()]
 
         context["last_tool_name"] = "rag_semantic_filter"
@@ -150,7 +143,7 @@ def get_rag_tools(session_id: str, context: dict, llm: Any) -> List[Any]:
             ),
             "data": keywords,
             "extracted_keywords": keywords,
-            "source": source,  # "user_pdf" atau "system_dataset" — berguna untuk XAI
+            "source": source,
         }
 
     return [

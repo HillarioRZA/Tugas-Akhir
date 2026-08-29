@@ -1,8 +1,4 @@
 """
-backend/services/ml/travel_trainer.py
-========================================
-Script training model ML untuk fitur Travel Recommendation WISTA.
-
 Jalankan SEKALI (atau saat dataset berubah) dari root project:
     python -m backend.services.ml.travel_trainer
 
@@ -42,17 +38,10 @@ import pandas as pd
 from pathlib import Path
 from datetime import datetime, timezone
 
-# ── Root project = 4 level atas dari file ini ──
-# backend/services/ml/travel_trainer.py
-# └── backend/services/ml/
-# └── backend/services/
-# └── backend/
-# └── <PROJECT_ROOT>
 _THIS_FILE   = Path(__file__).resolve()
-_ML_DIR      = _THIS_FILE.parent                     # backend/services/ml/
-PROJECT_ROOT = _ML_DIR.parent.parent.parent           # <project root>
+_ML_DIR      = _THIS_FILE.parent
+PROJECT_ROOT = _ML_DIR.parent.parent.parent
 
-# Tambahkan root ke sys.path agar import backend.* bisa bekerja
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -74,27 +63,20 @@ from sklearn.preprocessing import StandardScaler, OneHotEncoder
 # ─────────────────────────────────────────────────────────────
 
 DATASET_PATH      = PROJECT_ROOT / "Build_Dataset" / "bali_tourist_clean_v3.csv"
-MODELS_DIR        = PROJECT_ROOT / "saved_models"    # D:\...\Data_Whisperer_v1.0\saved_models\
+MODELS_DIR        = PROJECT_ROOT / "saved_models"
 MODELS_DIR.mkdir(exist_ok=True)
 
 MODEL_PATH        = MODELS_DIR / "travel_rf_model.joblib"
 PREPROCESSOR_PATH = MODELS_DIR / "travel_preprocessor.joblib"
 METADATA_PATH     = MODELS_DIR / "travel_model_metadata.joblib"
 
-# Fitur yang digunakan model
 NUMERIC_FEATURES     = ["Price", "Rating", "jumlah_rating"]
 CATEGORICAL_FEATURES = ["Category", "Crowd_Density"]
 ALL_FEATURES         = NUMERIC_FEATURES + CATEGORICAL_FEATURES
 
-# Tags feature engineering — top-N tag paling sering muncul
-TAGS_COL      = "tags"          # kolom tag di CSV (contoh: "alam, sepi, bukit")
-TAGS_TOP_N    = 20              # ambil 20 tag terpopuler sebagai binary fitur
-TAGS_SEP      = ","             # separator antar tag
-
-
-# ─────────────────────────────────────────────────────────────
-# HELPERS
-# ─────────────────────────────────────────────────────────────
+TAGS_COL      = "tags"
+TAGS_TOP_N    = 20
+TAGS_SEP      = ","
 
 def extract_top_tags(df: pd.DataFrame, col: str = TAGS_COL, top_n: int = TAGS_TOP_N) -> list:
     """
@@ -135,7 +117,7 @@ def compute_grouped_importance(feature_names, importances, known_features):
     """
     grouped = {}
     for feat_name, imp in zip(feature_names, importances):
-        raw     = feat_name.split("__", 1)[-1]   # hapus prefix num__ / cat__
+        raw     = feat_name.split("__", 1)[-1]
         matched = "Other"
         for known in known_features:
             if raw == known or raw.startswith(known + "_") or raw.startswith(known + " "):
@@ -145,9 +127,6 @@ def compute_grouped_importance(feature_names, importances, known_features):
     return {k: round(v, 4) for k, v in sorted(grouped.items(), key=lambda x: x[1], reverse=True)}
 
 
-# ─────────────────────────────────────────────────────────────
-# MAIN PIPELINE
-# ─────────────────────────────────────────────────────────────
 
 def train_and_save():
     """
@@ -160,7 +139,6 @@ def train_and_save():
 
     trained_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    # ── 1. Load Dataset ──
     print(f"\n[1/8] Memuat dataset: {DATASET_PATH.name}")
     if not DATASET_PATH.exists():
         raise FileNotFoundError(
@@ -171,7 +149,6 @@ def train_and_save():
     df = pd.read_csv(DATASET_PATH)
     print(f"      -> {len(df)} baris, {len(df.columns)} kolom")
 
-    # ── 1b. Dataset Snapshot untuk Drift Monitoring ──
     dataset_snapshot = {
         "n_rows":          int(len(df)),
         "n_cols":          int(len(df.columns)),
@@ -184,7 +161,6 @@ def train_and_save():
         "snapshot_at":     trained_at,
     }
 
-    # ── 2. Feature Engineering: Buat Label ──
     print(f"\n[2/8] Membuat label 'is_top_destination' (composite attractiveness score)...")
 
     rating_norm = (df["Rating"] - df["Rating"].min()) / (df["Rating"].max() - df["Rating"].min() + 1e-9)
@@ -203,7 +179,6 @@ def train_and_save():
     print(f"      Label 1 (Top Destination): {n_top} ({n_top/len(df)*100:.1f}%)")
     print(f"      Label 0 (Biasa)          : {len(df)-n_top} ({(len(df)-n_top)/len(df)*100:.1f}%)")
 
-    # ── 3. Tags Feature Engineering (ML-3 Fix) ──
     print(f"\n[3/8] Membangun tag features dari kolom '{TAGS_COL}'...")
     tag_vocab = extract_top_tags(df, col=TAGS_COL, top_n=TAGS_TOP_N)
     has_tags  = len(tag_vocab) > 0 and TAGS_COL in df.columns
@@ -217,12 +192,10 @@ def train_and_save():
         tag_vocab = []
         print("      -> Kolom tags tidak ditemukan. Dilewati.")
 
-    # ── 4. Split ──
     print(f"\n[4/8] Split data (80% train / 20% test, stratified)...")
     X_base = df[ALL_FEATURES].copy()
     y      = df["is_top_destination"]
 
-    # Concatenate tag binary features ke base features
     if has_tags:
         X = pd.concat([X_base.reset_index(drop=True), tags_df.reset_index(drop=True)], axis=1)
         effective_features = ALL_FEATURES + [f"tag_{t}" for t in tag_vocab]
@@ -236,9 +209,7 @@ def train_and_save():
     print(f"      Training: {len(X_train)} | Testing: {len(X_test)}")
     print(f"      Total features: {len(effective_features)} ({len(NUMERIC_FEATURES)} numerik + {len(CATEGORICAL_FEATURES)} kategorik + {len(tag_vocab)} tag binary)")
 
-    # ── 5. Preprocessing Pipeline ──
     print(f"\n[5/8] Membangun preprocessing pipeline (StandardScaler + OneHotEncoder + Tag passthrough)...")
-    # Tag features sudah biner (0/1), tidak perlu encoding tambahan — pakai passthrough
     tag_col_names = [f"tag_{t}" for t in tag_vocab]
 
     numeric_transformer = Pipeline([
@@ -255,8 +226,6 @@ def train_and_save():
         ("cat", categorical_transformer, CATEGORICAL_FEATURES),
     ]
     if tag_col_names:
-        # "passthrough" = sklearn built-in, mendukung get_feature_names_out()
-        # FunctionTransformer TIDAK mendukung get_feature_names_out() → error
         transformers.append(
             ("tag", "passthrough", tag_col_names)
         )
@@ -267,7 +236,6 @@ def train_and_save():
     X_test_proc  = preprocessor.transform(X_test)
     print(f"      -> Feature matrix shape (train): {X_train_proc.shape}")
 
-    # ── 6. Training ──
     print(f"\n[6/8] Melatih RandomForestClassifier (n_estimators=200, max_depth=15)...")
     model = RandomForestClassifier(
         n_estimators=200,
@@ -280,12 +248,10 @@ def train_and_save():
     model.fit(X_train_proc, y_train)
     print(f"      -> Selesai!")
 
-    # ── Feature Importance (base model, SEBELUM kalibrasi) ──
     feature_names_out   = preprocessor.get_feature_names_out()
     base_importances    = model.feature_importances_.copy()
     grouped_fi          = compute_grouped_importance(feature_names_out, base_importances, ALL_FEATURES)
 
-    # ── 6b. Kalibrasi Probabilitas — Platt Scaling (LIM-5 fix) ──
     print(f"\n[6b/8] Kalibrasi probabilitas (Platt Scaling / Sigmoid)...")
     calibrated_model = CalibratedClassifierCV(
         estimator=model,
@@ -296,13 +262,11 @@ def train_and_save():
     calibrated_model.fit(X_train_proc, y_train)
     print(f"      -> Kalibrasi selesai (3-fold Sigmoid).")
 
-    # ── 7. Evaluasi ──
     print(f"\n[7/8] Evaluasi pada test set:")
     y_pred            = model.predict(X_test_proc)
     y_pred_prob_base  = model.predict_proba(X_test_proc)[:, 1]
     y_pred_prob_cal   = calibrated_model.predict_proba(X_test_proc)[:, 1]
 
-    # Brier Score (mengukur kualitas kalibrasi — lower is better)
     brier_base       = round(float(brier_score_loss(y_test, y_pred_prob_base)), 4)
     brier_calibrated = round(float(brier_score_loss(y_test, y_pred_prob_cal)), 4)
 
@@ -333,7 +297,6 @@ def train_and_save():
     cv_scores = cross_val_score(model, X_train_proc, y_train, cv=5, scoring="f1")
     print(f"\n      5-Fold CV F1: {cv_scores.mean():.4f} +/- {cv_scores.std():.4f}")
 
-    # ── Feature Importance (dari base_importances) ──
     print(f"\n      Feature Importance (grouped):")
     for feat, imp in grouped_fi.items():
         print(f"      {feat:<25}: {imp:.4f} ({imp*100:.1f}%)")
@@ -344,7 +307,6 @@ def train_and_save():
         key=lambda x: x["importance"], reverse=True
     )[:10]
 
-    # ── 8. Simpan ──
     print(f"\n[8/8] Menyimpan model dan metadata ke: {MODELS_DIR}")
     metadata = {
         "model_type":               "RandomForestClassifier",
@@ -356,8 +318,8 @@ def train_and_save():
         "label_threshold":          float(threshold),
         "features_numeric":         NUMERIC_FEATURES,
         "features_categorical":     CATEGORICAL_FEATURES,
-        "features_tag_vocab":       tag_vocab,          # ML-3: tag vocab untuk drift check
-        "all_features":             effective_features,  # includes tag_* columns
+        "features_tag_vocab":       tag_vocab,
+        "all_features":             effective_features,
         "feature_names_out":        list(feature_names_out),
         "grouped_feature_importance": grouped_fi,
         "top_10_raw_features":      top_10_raw,
@@ -368,12 +330,11 @@ def train_and_save():
         "test_samples":             int(len(X_test)),
         "dataset_path":             str(DATASET_PATH),
         "models_dir":               str(MODELS_DIR),
-        # ML-2: Dataset snapshot untuk drift monitoring
         "dataset_snapshot":         dataset_snapshot,
         "trained_at":               trained_at,
     }
 
-    joblib.dump(calibrated_model, MODEL_PATH)   # LIM-5: simpan model terkalibrasi
+    joblib.dump(calibrated_model, MODEL_PATH)
     joblib.dump(preprocessor,      PREPROCESSOR_PATH)
     joblib.dump(metadata,          METADATA_PATH)
 

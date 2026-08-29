@@ -32,7 +32,6 @@ def get_rag_answer(question: str, vector_store, llm_text):
     try:
         retriever = vector_store.as_retriever(search_kwargs={'k': 10})
 
-        # ── Step 1: Retrieve dokumen (SEKALI saja) ──────────────────────────
         relevant_docs = retriever.invoke(question)
 
         # Logging ringkas untuk debug
@@ -44,10 +43,8 @@ def get_rag_answer(question: str, vector_store, llm_text):
         if not relevant_docs:
             return "Error: Tidak ada dokumen relevan yang ditemukan di knowledge base."
 
-        # ── Step 2: Format context dari dokumen yang sudah diambil ──────────
         context_str = format_docs(relevant_docs)
 
-        # ── Step 3: Build prompt + chain (pakai context yang sudah ada) ──────
         template = """Anda adalah asisten AI yang menjawab pertanyaan hanya berdasarkan konteks yang diberikan.
         Jika Anda tidak tahu jawabannya dari konteks, katakan saja Anda tidak tahu. Jawab dengan ringkas.
 
@@ -59,7 +56,6 @@ def get_rag_answer(question: str, vector_store, llm_text):
         Jawaban:"""
         prompt = ChatPromptTemplate.from_template(template)
 
-        # Gunakan RunnableLambda agar context tidak perlu di-retrieve ulang
         rag_chain = (
             {
                 "context": RunnableLambda(lambda _: context_str),
@@ -70,7 +66,6 @@ def get_rag_answer(question: str, vector_store, llm_text):
             | StrOutputParser()
         )
 
-        # ── Step 4: Invoke chain dengan question saja ────────────────────────
         answer = rag_chain.invoke(question)
         return answer
 

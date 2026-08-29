@@ -38,7 +38,6 @@ import requests
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-# ── Tambahkan root project ke path ──
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -50,19 +49,9 @@ from backend.testing.report_generator import (
     generate_all_reports,
 )
 
-
-# ─────────────────────────────────────────────────────────────
-# CONFIG DEFAULT
-# ─────────────────────────────────────────────────────────────
-
 DEFAULT_API_URL = "http://localhost:8000/api/agent/execute"
-REQUEST_TIMEOUT = 120   # detik — agent bisa lambat karena LLM call
-DELAY_BETWEEN   = 3     # detik jeda antar skenario (hindari rate limit)
-
-
-# ─────────────────────────────────────────────────────────────
-# API CALLER
-# ─────────────────────────────────────────────────────────────
+REQUEST_TIMEOUT = 120
+DELAY_BETWEEN   = 3
 
 def call_agent_api(
     prompt: str,
@@ -217,11 +206,6 @@ def _build_mock_response(scenario: Dict[str, Any]) -> Dict[str, Any]:
     sid = scenario["id"]
     return mock_data.get(sid, {"summary": "", "reasoning_log": []})
 
-
-# ─────────────────────────────────────────────────────────────
-# RUNNER UTAMA
-# ─────────────────────────────────────────────────────────────
-
 def run_all_tests(
     api_url: str = DEFAULT_API_URL,
     scenario_id: Optional[int] = None,
@@ -230,7 +214,6 @@ def run_all_tests(
     """
     Jalankan semua skenario (atau satu skenario spesifik).
     """
-    # Ambil skenario
     if scenario_id is not None:
         scenarios = [get_scenario_by_id(scenario_id)]
         if not scenarios[0]:
@@ -250,7 +233,6 @@ def run_all_tests(
     print(f"  Target TA    : Success Rate >= 90%")
 
     if not dry_run:
-        # Cek koneksi server sebelum mulai
         try:
             r = requests.get(api_url.replace("/execute", "/docs"), timeout=5)
             print(f"  Server Status: OK (HTTP {r.status_code})")
@@ -261,9 +243,7 @@ def run_all_tests(
             sys.exit(1)
 
     print("=" * 65)
-
     all_results = []
-    # Satu session ID untuk semua skenario (agent punya context antar skenario)
     session_id  = str(uuid.uuid4())
     print(f"  Session ID   : {session_id}\n")
 
@@ -271,7 +251,6 @@ def run_all_tests(
         print(f"\n[{i}/{len(scenarios)}] Menjalankan: Skenario {scenario['id']} — {scenario['name']}")
         print(f"  Prompt: \"{scenario['prompt'][:70]}...\"")
 
-        # ── Panggil API atau mock ──
         if dry_run:
             agent_response = _build_mock_response(scenario)
             print(f"  [DRY-RUN] Menggunakan mock response.")
@@ -286,32 +265,24 @@ def run_all_tests(
             elapsed = time.time() - start
             print(f"  Response diterima dalam {elapsed:.1f}s")
 
-        # ── Cek error API ──
         if "error" in agent_response and not agent_response.get("summary"):
             print(f"  [ERROR] API gagal: {agent_response.get('detail', agent_response['error'])}")
-            # Tetap evaluasi dengan response kosong agar tidak skip
             agent_response["summary"] = ""
             agent_response["reasoning_log"] = []
 
-        # ── Evaluasi ──
         result = evaluate_scenario_result(scenario, agent_response)
         all_results.append(result)
 
-        # ── Print hasil satu skenario ──
         print_scenario_result(result)
 
-        # Jeda antar skenario (bukan skenario terakhir)
         if not dry_run and i < len(scenarios):
             print(f"\n  Jeda {DELAY_BETWEEN}s sebelum skenario berikutnya...")
             time.sleep(DELAY_BETWEEN)
 
-    # ── Hitung Success Rate ──
     summary = compute_success_rate(all_results)
 
-    # ── Print tabel ringkasan ──
     print_summary_table(all_results, summary)
 
-    # ── Generate laporan ──
     print("  Membuat file laporan...")
     report_paths = generate_all_reports(all_results, summary)
 
@@ -319,18 +290,12 @@ def run_all_tests(
     for fmt, path in report_paths.items():
         print(f"    [{fmt.upper():4}] {path}")
 
-    # ── Exit code ──
     if summary["meets_proposal_target"]:
         print(f"\n  HASIL: Target proposal TERCAPAI! ({summary['success_rate']} >= 90%)")
         sys.exit(0)
     else:
         print(f"\n  HASIL: Target proposal BELUM TERCAPAI ({summary['success_rate']} < 90%)")
         sys.exit(1)
-
-
-# ─────────────────────────────────────────────────────────────
-# CLI ARGUMENT PARSING
-# ─────────────────────────────────────────────────────────────
 
 def parse_args():
     parser = argparse.ArgumentParser(

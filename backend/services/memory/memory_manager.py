@@ -3,11 +3,6 @@ from typing import Dict, Any
 from backend.services.memory import persistent_memory
 
 _session_memory: Dict[str, Dict[str, Any]] = {}
-
-# ─────────────────────────────────────────────────────────────
-# SYSTEM VECTOR STORE — knowledge base bawaan dari dataset CSV
-# Shared across all sessions, diisi saat startup.
-# ─────────────────────────────────────────────────────────────
 _system_vector_store: Any = None
 
 def save_system_vector_store(vector_store: Any):

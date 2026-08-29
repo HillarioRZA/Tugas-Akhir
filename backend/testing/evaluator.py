@@ -26,28 +26,16 @@ Skor total: rata-rata tertimbang → SUCCESS jika >= 0.6
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-
-# ─────────────────────────────────────────────────────────────
-# KONSTANTA
-# ─────────────────────────────────────────────────────────────
-
-# Keyword pushback — response mengandung salah satu ini → pushback detected
 PUSHBACK_KEYWORDS = [
     "budget", "terlalu kecil", "tidak cukup", "tidak memungkinkan",
     "tidak bisa", "tidak dapat", "maaf", "mohon maaf",
     "anggaran", "kurang", "minimum", "minimal"
 ]
 
-# Kata yang menandakan agent berhasil (buruk untuk skenario pushback)
 SUCCESS_KEYWORDS_BAD_FOR_PUSHBACK = [
     "berikut itinerary", "berikut rute", "berhasil membuat", "rekomendasi anda",
     "inilah itinerary", "hari pertama", "hari kedua"
 ]
-
-
-# ─────────────────────────────────────────────────────────────
-# HELPER PARSER
-# ─────────────────────────────────────────────────────────────
 
 def _extract_tool_calls_from_log(reasoning_log: List) -> Dict[str, Any]:
     """
@@ -69,17 +57,15 @@ def _extract_tool_calls_from_log(reasoning_log: List) -> Dict[str, Any]:
     (digunakan oleh dry-run mock)
     """
     import json
-    tool_calls = {}  # {tool_name: [args_dict, ...]}
+    tool_calls = {}
 
     for entry in reasoning_log:
-        # ── Format utama: dict dari intermediate_steps ──
         if isinstance(entry, dict):
             tool_name = entry.get("tool_called", "")
             tool_input = entry.get("tool_input", {})
             if tool_name:
                 if tool_name not in tool_calls:
                     tool_calls[tool_name] = []
-                # tool_input bisa berupa dict atau string JSON
                 if isinstance(tool_input, str):
                     try:
                         tool_input = json.loads(tool_input)
@@ -87,7 +73,6 @@ def _extract_tool_calls_from_log(reasoning_log: List) -> Dict[str, Any]:
                         tool_input = {}
                 tool_calls[tool_name].append(tool_input if isinstance(tool_input, dict) else {})
 
-        # ── Fallback: string "Invoking: `tool` with `{...}`" (dry-run mock) ──
         elif isinstance(entry, str):
             match = re.search(
                 r"Invoking:\s*`([^`]+)`\s+with\s+`(\{.*?\})`",
@@ -111,11 +96,6 @@ def _normalize_text(text: str) -> str:
     """Lowercase dan strip tanda baca untuk perbandingan."""
     return re.sub(r"[^\w\s]", "", text.lower()).strip()
 
-
-# ─────────────────────────────────────────────────────────────
-# DIMENSI 1: Tool Selection Accuracy
-# ─────────────────────────────────────────────────────────────
-
 def evaluate_tool_selection(
     tool_calls: Dict[str, Any],
     expected_tools: List[str],
@@ -136,15 +116,12 @@ def evaluate_tool_selection(
     forbidden_set = set(forbidden_tools)
     preferred_set = set(preferred_tools or [])
 
-    # Cek forbidden
     forbidden_called = called & forbidden_set
     if forbidden_called:
         return 0.0, f"GAGAL: Tool terlarang dipanggil: {forbidden_called}"
 
-    # Cek expected
     missing_expected = expected_set - called
     if not missing_expected:
-        # Semua expected terpenuhi
         preferred_called = called & preferred_set
         if preferred_set and preferred_called:
             return 1.0, f"LULUS: Semua expected + preferred tools dipanggil: {called & (expected_set | preferred_set)}"
@@ -153,11 +130,6 @@ def evaluate_tool_selection(
         return 0.5, f"PARSIAL: Beberapa expected tools tidak dipanggil: {missing_expected}"
     else:
         return 0.0, f"GAGAL: Tidak ada expected tools yang dipanggil. Tools dipanggil: {called}"
-
-
-# ─────────────────────────────────────────────────────────────
-# DIMENSI 2: Argument Quality
-# ─────────────────────────────────────────────────────────────
 
 def evaluate_arguments(
     tool_calls: Dict[str, Any],
@@ -180,7 +152,6 @@ def evaluate_arguments(
 
     for tool_name, checks in arg_checks.items():
         if tool_name not in tool_calls:
-            # Tool tidak dipanggil → arg check tidak bisa divalidasi
             details.append({
                 "tool": tool_name,
                 "status": "SKIP",
@@ -188,7 +159,6 @@ def evaluate_arguments(
             })
             continue
 
-        # Ambil argumen dari call terakhir tool ini
         args_list = tool_calls[tool_name]
         args = args_list[-1] if args_list else {}
 
@@ -243,11 +213,6 @@ def evaluate_arguments(
     summary = f"{passed_checks}/{total_checks} argumen lulus validasi."
     return round(score, 2), summary, details
 
-
-# ─────────────────────────────────────────────────────────────
-# DIMENSI 3: Response Quality
-# ─────────────────────────────────────────────────────────────
-
 def evaluate_response_quality(
     summary: str,
     expected_in_response: List[str],
@@ -262,7 +227,6 @@ def evaluate_response_quality(
     total   = 0
     passed  = 0
 
-    # Cek expected keywords
     for kw in expected_in_response:
         total += 1
         found = kw.lower() in normalized
@@ -275,11 +239,9 @@ def evaluate_response_quality(
             "found": found
         })
 
-    # Cek forbidden keywords (indikasi halusinasi)
     for kw in forbidden_in_response:
         total += 1
         found = kw.lower() in normalized
-        # Forbidden ditemukan → GAGAL
         status = "GAGAL" if found else "LULUS"
         passed += 0 if found else 1
         details.append({
@@ -290,7 +252,6 @@ def evaluate_response_quality(
             "note": "Indikasi halusinasi kota/tempat yang tidak relevan" if found else ""
         })
 
-    # Cek pushback behavior (khusus Skenario 3)
     if expected_pushback:
         total += 1
         pushback_found = any(kw in normalized for kw in PUSHBACK_KEYWORDS)
@@ -312,11 +273,6 @@ def evaluate_response_quality(
     summary_msg = f"{passed}/{total} response quality checks lulus."
     return score, summary_msg, details
 
-
-# ─────────────────────────────────────────────────────────────
-# EVALUATOR UTAMA
-# ─────────────────────────────────────────────────────────────
-
 def evaluate_scenario_result(
     scenario: Dict[str, Any],
     agent_response: Dict[str, Any],
@@ -335,10 +291,8 @@ def evaluate_scenario_result(
     summary_txt = agent_response.get("summary", "")
     reasoning   = agent_response.get("reasoning_log", [])
 
-    # Parse tool calls dari reasoning log
     tool_calls = _extract_tool_calls_from_log(reasoning)
 
-    # ── D1: Tool Selection ──
     d1_score, d1_msg = evaluate_tool_selection(
         tool_calls=tool_calls,
         expected_tools=expected.get("expected_tools", []),
@@ -346,13 +300,11 @@ def evaluate_scenario_result(
         preferred_tools=expected.get("preferred_tools", []),
     )
 
-    # ── D2: Argument Quality ──
     d2_score, d2_msg, d2_details = evaluate_arguments(
         tool_calls=tool_calls,
         arg_checks=expected.get("arg_checks", {}),
     )
 
-    # ── D3: Response Quality ──
     d3_score, d3_msg, d3_details = evaluate_response_quality(
         summary=summary_txt,
         expected_in_response=expected.get("expected_in_response", []),
@@ -360,10 +312,6 @@ def evaluate_scenario_result(
         expected_pushback=expected.get("expected_pushback", False),
     )
 
-    # ── Weighted Final Score ──
-    # D1 Tool Selection: 40% (paling kritis untuk TA)
-    # D2 Argument Quality: 35% (anti-halusinasi argumen)
-    # D3 Response Quality: 25%
     weights = {"d1": 0.40, "d2": 0.35, "d3": 0.25}
     final_score = round(
         d1_score * weights["d1"] +
@@ -372,9 +320,8 @@ def evaluate_scenario_result(
         3
     )
 
-    is_success = final_score >= 0.6  # 60% = threshold lulus
+    is_success = final_score >= 0.6
 
-    # Bonus: preferred tools dipanggil → +5% tapi tidak melampaui 1.0
     preferred = set(expected.get("preferred_tools", []))
     called    = set(tool_calls.keys())
     bonus     = 0.05 if preferred and (preferred & called) else 0.0

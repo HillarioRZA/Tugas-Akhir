@@ -1,8 +1,4 @@
 """
-backend/services/ml/main.py
-============================
-ML Tools untuk AI Agent WISTA.
-
 predict_match_score:
   Menggunakan RandomForestClassifier yang sudah dilatih pada dataset bali_tourist_clean_v3.csv
   untuk memprediksi seberapa cocok (Match Score 0-100%) suatu destinasi dengan preferensi user.
@@ -27,21 +23,10 @@ from pydantic import BaseModel, Field
 from backend.utils.read_csv import _read_csv_with_fallback
 from backend.services.memory import persistent_memory
 
-# ─────────────────────────────────────────────────────────────
-# PATH MODEL
-# Model disimpan di folder saved_models/ di root project.
-# Gunakan travel_trainer.py (di folder ini) untuk melatih ulang model.
-# ─────────────────────────────────────────────────────────────
-
-# backend/services/ml/main.py → naik 4 level → project root
 _ML_BASE = Path(__file__).parent.parent.parent.parent / "saved_models"
 _MODEL_PATH        = _ML_BASE / "travel_rf_model.joblib"
 _PREPROCESSOR_PATH = _ML_BASE / "travel_preprocessor.joblib"
 _METADATA_PATH     = _ML_BASE / "travel_model_metadata.joblib"
-
-# ─────────────────────────────────────────────────────────────
-# LAZY LOADER — Model di-load sekali, di-cache di memory modul
-# ─────────────────────────────────────────────────────────────
 
 _model_cache = {}
 
@@ -60,12 +45,6 @@ def _load_ml_assets():
             return None, None, None
     return _model_cache["model"], _model_cache["preprocessor"], _model_cache["metadata"]
 
-
-# ─────────────────────────────────────────────────────────────
-# HELPER: Preference Adjustment Score
-# Menyesuaikan base ML score dengan preferensi eksplisit user
-# ─────────────────────────────────────────────────────────────
-
 def _apply_preference_adjustment(base_score: float, row: pd.Series, user_prefs: dict) -> float:
     """
     Mendapatkan adjusted score dengan menambahkan/mengurangi bonus berdasarkan
@@ -76,14 +55,12 @@ def _apply_preference_adjustment(base_score: float, row: pd.Series, user_prefs: 
     """
     adjustment = 0.0
 
-    # ── Kecocokan Kategori ──
     pref_category = user_prefs.get("category", user_prefs.get("kategori", ""))
     if pref_category and isinstance(pref_category, str):
         dest_category = str(row.get("Category", "")).lower()
         if pref_category.lower() in dest_category or dest_category in pref_category.lower():
             adjustment += 0.08
 
-    # ── Kecocokan Crowd / Keramaian ──
     pref_crowd = user_prefs.get("crowd_preference", user_prefs.get("keramaian", ""))
     if pref_crowd and isinstance(pref_crowd, str):
         crowd_map = {
@@ -97,7 +74,6 @@ def _apply_preference_adjustment(base_score: float, row: pd.Series, user_prefs: 
         if target_crowd and dest_crowd == target_crowd:
             adjustment += 0.07
 
-    # ── Kecocokan Budget / Harga ──
     pref_budget = user_prefs.get("budget_preference", user_prefs.get("budget", ""))
     dest_price  = float(row.get("Price", 0))
     if pref_budget:
@@ -114,13 +90,7 @@ def _apply_preference_adjustment(base_score: float, row: pd.Series, user_prefs: 
             elif dest_price > budget_threshold * 2:
                 adjustment -= 0.05
 
-    # Clamp final score ke range [0.0, 1.0]
     return float(np.clip(base_score + adjustment, 0.0, 1.0))
-
-
-# ─────────────────────────────────────────────────────────────
-# PYDANTIC SCHEMA
-# ─────────────────────────────────────────────────────────────
 
 class MatchScoreInput(BaseModel):
     user_preferences: dict = Field(
@@ -135,11 +105,6 @@ class MatchScoreInput(BaseModel):
     candidate_destinations: list[str] = Field(
         description="Daftar nama destinasi wisata yang ingin dinilai relevansinya."
     )
-
-
-# ─────────────────────────────────────────────────────────────
-# TOOL FACTORY
-# ─────────────────────────────────────────────────────────────
 
 def get_ml_tools(session_id: str, context: dict) -> List[Any]:
 
@@ -166,11 +131,9 @@ def get_ml_tools(session_id: str, context: dict) -> List[Any]:
         Output berisi match_score, label prediksi, feature_importance, dan preference_adjustment.
         """
 
-        # ── 1. Load model assets ──
         model, preprocessor, metadata = _load_ml_assets()
 
         if model is None:
-            # Fallback informatif jika model belum dilatih
             return {
                 "status": "warning",
                 "message": (
@@ -180,7 +143,6 @@ def get_ml_tools(session_id: str, context: dict) -> List[Any]:
                 "data": []
             }
 
-        # ── 2. Load dataset & cari kandidat ──
         df = _read_current_df()
         if df is None:
             return {"status": "error", "message": "Dataset tidak ditemukan.", "data": []}
@@ -191,8 +153,6 @@ def get_ml_tools(session_id: str, context: dict) -> List[Any]:
         )
         if name_col is None:
             return {"status": "error", "message": "Kolom nama destinasi tidak ditemukan di dataset.", "data": []}
-
-        # Filter baris yang nama destinasinya ada di candidate list
         candidate_mask = df[name_col].isin(candidate_destinations)
         candidate_df   = df[candidate_mask].copy()
 
@@ -203,7 +163,6 @@ def get_ml_tools(session_id: str, context: dict) -> List[Any]:
                 "data": []
             }
 
-        # ── 3. Siapkan feature matrix ──
         feature_cols = metadata["all_features"]
         available_cols = [c for c in feature_cols if c in candidate_df.columns]
         missing_cols   = [c for c in feature_cols if c not in candidate_df.columns]
@@ -220,14 +179,12 @@ def get_ml_tools(session_id: str, context: dict) -> List[Any]:
         except Exception as e:
             return {"status": "error", "message": f"Preprocessing gagal: {e}", "data": []}
 
-        # ── 4. Prediksi probabilitas Match Score ──
         try:
-            proba = model.predict_proba(X_proc)  # shape: (n, 2)
-            base_scores = proba[:, 1]            # prob of class 1 (top destination)
+            proba = model.predict_proba(X_proc) 
+            base_scores = proba[:, 1]
         except Exception as e:
             return {"status": "error", "message": f"Prediksi model gagal: {e}", "data": []}
 
-        # ── 5. Preference Adjustment + Build Results ──
         grouped_fi  = metadata.get("grouped_feature_importance", {})
         top_fi_list = [
             {"fitur": feat, "kontribusi": f"{round(imp * 100, 1)}%"}
@@ -254,10 +211,8 @@ def get_ml_tools(session_id: str, context: dict) -> List[Any]:
                 "rating":                float(row.get("Rating", 0.0)),
             })
 
-        # Sort descending by match score
         results = sorted(results, key=lambda x: x["match_score_percentage"], reverse=True)
 
-        # ── 6. Simpan output ke context ──
         context["last_tool_output"] = results
         context["last_tool_name"]   = "predict_match_score"
         context.setdefault("_tool_history", []).append({"tool": "predict_match_score", "output": results})
@@ -308,7 +263,6 @@ def get_ml_tools(session_id: str, context: dict) -> List[Any]:
                 from backend.services.ml.travel_trainer import train_and_save
                 result = train_and_save()
                 train_result.update(result)
-                # Invalidate cache agar model baru langsung dipakai
                 _model_cache.clear()
                 print("[ML] Model cache di-reset. Model baru siap digunakan.")
             except Exception as e:
@@ -316,7 +270,7 @@ def get_ml_tools(session_id: str, context: dict) -> List[Any]:
 
         thread = threading.Thread(target=_run_training, daemon=True)
         thread.start()
-        thread.join(timeout=120)  # maks 2 menit
+        thread.join(timeout=120)
 
         if error_holder:
             return {
@@ -361,7 +315,6 @@ def get_ml_tools(session_id: str, context: dict) -> List[Any]:
         atau 'Cek drift model'.
         Mengembalikan laporan drift dengan severity: OK / WARNING / CRITICAL.
         """
-        # ── 1. Load metadata model ──
         model, preprocessor, metadata = _load_ml_assets()
         if model is None:
             return {
@@ -380,12 +333,10 @@ def get_ml_tools(session_id: str, context: dict) -> List[Any]:
                 )
             }
 
-        # ── 2. Load dataset terkini ──
         df = _read_current_df()
         if df is None:
             return {"status": "error", "message": "Dataset tidak ditemukan untuk dibandingkan."}
 
-        # ── 3. Hitung statistik saat ini ──
         current_stats = {
             "n_rows":          int(len(df)),
             "price_mean":      round(float(df["Price"].mean()),  2) if "Price"        in df.columns else None,
@@ -396,9 +347,8 @@ def get_ml_tools(session_id: str, context: dict) -> List[Any]:
             "categories":      sorted(df["Category"].dropna().unique().tolist()) if "Category" in df.columns else [],
         }
 
-        # ── 4. Deteksi drift per metrik ──
-        THRESHOLD_MEAN = 0.15   # ±15% perubahan mean = WARNING
-        THRESHOLD_STD  = 0.25   # ±25% perubahan std  = WARNING
+        THRESHOLD_MEAN = 0.15
+        THRESHOLD_STD  = 0.25
         issues = []
 
         def _pct_change(old, new) -> float:
@@ -406,7 +356,6 @@ def get_ml_tools(session_id: str, context: dict) -> List[Any]:
                 return abs(new - old) / abs(old)
             return 0.0
 
-        # Row count drift
         row_change = _pct_change(train_snapshot.get("n_rows", 0), current_stats["n_rows"])
         if row_change > 0.20:
             issues.append({
@@ -417,7 +366,6 @@ def get_ml_tools(session_id: str, context: dict) -> List[Any]:
                 "severity":  "WARNING"
             })
 
-        # Price mean drift
         for key, thr in [("price_mean", THRESHOLD_MEAN), ("price_std", THRESHOLD_STD),
                           ("rating_mean", THRESHOLD_MEAN), ("rating_std", THRESHOLD_STD)]:
             old = train_snapshot.get(key)
@@ -433,7 +381,6 @@ def get_ml_tools(session_id: str, context: dict) -> List[Any]:
                         "severity":   "CRITICAL" if pct > thr * 2 else "WARNING",
                     })
 
-        # Category drift (new categories added)
         old_cats = set(train_snapshot.get("categories", []))
         new_cats = set(current_stats["categories"])
         added_cats   = list(new_cats - old_cats)
@@ -446,7 +393,6 @@ def get_ml_tools(session_id: str, context: dict) -> List[Any]:
                 "severity":      "WARNING",
             })
 
-        # ── 5. Hitung severity keseluruhan ──
         critical_count = sum(1 for i in issues if i.get("severity") == "CRITICAL")
         warning_count  = sum(1 for i in issues if i.get("severity") == "WARNING")
 

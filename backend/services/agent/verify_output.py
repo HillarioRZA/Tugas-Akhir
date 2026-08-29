@@ -1,25 +1,4 @@
 """
-backend/services/agent/verify_output.py
-=========================================
-Chain of Verification (CoV) Tool untuk AgentExecutor WISTA.
-
-Menyediakan factory function `create_verify_output_tool(context)` yang
-mengembalikan LangChain @tool eksplisit untuk digunakan dalam toolbox agent.
-
-Dengan tool ini, agent dapat memanggil verify_output() sebagai langkah ReAct
-eksplisit sebelum mengirim jawaban akhir ke user:
-
-    Thought → Action: [main tool] → Observation
-    Thought → Action: verify_output(draft=...) → Observation {passed: True/False}
-    Thought → Final Answer (hanya jika passed=True)
-
-Checks yang dilakukan:
-  1. Panjang minimum respons (≥50 karakter)
-  2. Halusinasi numerik (Rp 0, nan, None, undefined)
-  3. Konsistensi dengan last_tool_output di context
-  4. Domain scope (menolak konten di luar wisata Bali)
-  5. Budget integrity (jika optimizer tool dipanggil)
-
 Referensi: Chain-of-Verification (CoV) — Dhuliawala et al., 2023
 """
 
@@ -60,26 +39,38 @@ def create_verify_output_tool(context: Dict[str, Any]):
         """
         issues = []
 
-        # ── 1. Cek panjang minimum (jawaban bermakna) ──
         if len(draft_response.strip()) < 50:
             issues.append(
                 "PERINGATAN: Draft respons terlalu pendek — mungkin tidak informatif."
             )
 
-        # ── 2. Cek indikasi halusinasi numerik ──
         HALLUCINATION_PATTERNS = [
-            ("Rp 0",      "Harga bernilai 0 — kemungkinan error."),
-            ("nan",       "Nilai NaN terdeteksi — data hilang atau error processing."),
-            ("None",      "Nilai None terdeteksi — kemungkinan tool belum mengembalikan data."),
-            ("undefined", "Kata 'undefined' terdeteksi."),
+            # ("Rp 0", ...) → DIHAPUS: Harga 0 = Gratis, valid di dataset wisata Bali
+            ("undefined", "Kata 'undefined' terdeteksi — kemungkinan bug di tool output."),
         ]
-        for pattern, msg in HALLUCINATION_PATTERNS:
-            if pattern.lower() in draft_response.lower():
+
+        # Cek NaN/None hanya jika berdiri sendiri (bukan bagian dari kata lain)
+        import re
+        if re.search(r'\bnan\b', draft_response, re.IGNORECASE):
+            # Cek apakah NaN dari konteks yang valid (seperti "distance_to_next: null")
+            # Jika NaN muncul dalam narasi harga/rating, itu memang error
+            nan_context = re.findall(r'.{0,30}\bnan\b.{0,30}', draft_response, re.IGNORECASE)
+            price_related_nan = any(
+                any(kw in ctx.lower() for kw in ['harga', 'price', 'rp', 'rating', 'biaya'])
+                for ctx in nan_context
+            )
+            if price_related_nan:
                 issues.append(
-                    f"PERINGATAN HALUSINASI: {msg} | Ditemukan: '{pattern}'"
+                    "PERINGATAN: Nilai NaN terdeteksi di konteks harga/rating — data mungkin error."
                 )
 
-        # ── 3. Cek konsistensi dengan last_tool_output ──
+        if re.search(r'\bNone\b', draft_response):
+            issues.append(
+                "PERINGATAN: Nilai None terdeteksi — kemungkinan tool belum mengembalikan data."
+            )
+
+
+
         last_output  = context.get("last_tool_output")
         last_name    = context.get("last_tool_name", "")
         tool_history = context.get("_tool_history", [])
@@ -93,7 +84,6 @@ def create_verify_output_tool(context: Dict[str, Any]):
                 "tapi tidak ada tool yang dipanggil sebelumnya (last_tool_output kosong)."
             )
 
-        # ── 4. Cek apakah output keluar dari domain wisata Bali ──
         OUT_OF_DOMAIN_KEYWORDS = [
             "jakarta", "lombok", "surabaya", "bandung", "jogja", "yogyakarta",
             "eropa", "singapura", "malaysia", "kode python", "integral", "presiden",
@@ -104,11 +94,9 @@ def create_verify_output_tool(context: Dict[str, Any]):
                 "Pertimbangkan untuk menolak dengan sopan menggunakan template guardrail."
             )
 
-        # ── 5. Cek integritas budget (jika optimizer dipanggil) ──
         budget = context.get("budget")
         optimizer_output = None
 
-        # Cari output optimizer dari history atau last_name (BUG-2 + BUG-10 fix)
         if last_name == "budget_optimizer_tool" and isinstance(last_output, dict):
             optimizer_output = last_output
         else:

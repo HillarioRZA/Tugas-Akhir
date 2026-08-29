@@ -1,11 +1,10 @@
-# File: backend/services/rag/vectorizer.py
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from dotenv import load_dotenv
 load_dotenv()
 
-embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
+embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-1-preview")
 
 def create_vector_store(text_content: str):
     try:

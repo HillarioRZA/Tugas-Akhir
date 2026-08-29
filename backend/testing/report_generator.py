@@ -20,10 +20,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
-# ─────────────────────────────────────────────────────────────
-# CONFIG
-# ─────────────────────────────────────────────────────────────
-
 REPORTS_DIR = Path(__file__).parent / "reports"
 REPORTS_DIR.mkdir(exist_ok=True)
 
@@ -40,11 +36,6 @@ def _score_bar(score: float, width: int = 15) -> str:
 
 def _status_icon(is_success: bool) -> str:
     return "LULUS" if is_success else "GAGAL"
-
-
-# ─────────────────────────────────────────────────────────────
-# 1. TABEL TERMINAL (Real-time saat test berjalan)
-# ─────────────────────────────────────────────────────────────
 
 def print_scenario_result(result: Dict[str, Any]) -> None:
     """Print hasil satu skenario ke terminal secara rapi."""
@@ -98,11 +89,6 @@ def print_summary_table(results: List[Dict], summary: Dict) -> None:
     print(f"  Status Target  : {met}")
     print(f"{'='*W}\n")
 
-
-# ─────────────────────────────────────────────────────────────
-# 2. JSON DETAIL (Audit Log)
-# ─────────────────────────────────────────────────────────────
-
 def save_json_report(results: List[Dict], summary: Dict) -> Path:
     """Simpan laporan JSON lengkap."""
     ts       = _timestamp()
@@ -119,11 +105,6 @@ def save_json_report(results: List[Dict], summary: Dict) -> Path:
 
     print(f"  [JSON] Laporan detail disimpan: {filepath}")
     return filepath
-
-
-# ─────────────────────────────────────────────────────────────
-# 3. CSV RINGKASAN (Siap pakai di Excel/Word skripsi)
-# ─────────────────────────────────────────────────────────────
 
 def save_csv_report(results: List[Dict], summary: Dict) -> Path:
     """Simpan ringkasan sebagai CSV."""
@@ -169,11 +150,6 @@ def save_csv_report(results: List[Dict], summary: Dict) -> Path:
 
     print(f"  [CSV] Ringkasan disimpan: {filepath}")
     return filepath
-
-
-# ─────────────────────────────────────────────────────────────
-# 4. TXT LAPORAN NARATIF (Untuk Bab Evaluasi Skripsi)
-# ─────────────────────────────────────────────────────────────
 
 def save_narrative_report(results: List[Dict], summary: Dict) -> Path:
     """
@@ -282,11 +258,6 @@ def save_narrative_report(results: List[Dict], summary: Dict) -> Path:
 
     print(f"  [TXT] Laporan naratif disimpan: {filepath}")
     return filepath
-
-
-# ─────────────────────────────────────────────────────────────
-# ENTRY POINT
-# ─────────────────────────────────────────────────────────────
 
 def generate_all_reports(results: List[Dict], summary: Dict) -> Dict[str, Path]:
     """Generate semua format laporan sekaligus."""

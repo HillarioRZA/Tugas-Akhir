@@ -23,25 +23,18 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# LIM-6: Path untuk persisten FAISS index ke disk
 _THIS_FILE     = Path(__file__).resolve()
 _PROJECT_ROOT  = _THIS_FILE.parent.parent.parent.parent
 FAISS_SAVE_DIR = _PROJECT_ROOT / "saved_vectorstores" / "system_faiss"
 
-# Status tracking untuk endpoint /rag/status dan /rag/rebuild
 build_status: dict = {
-    "state":      "idle",     # idle | building | ready | failed
-    "progress":   0,          # jumlah dokumen yang sudah di-embed
+    "state":      "idle",
+    "progress":   0,
     "total":      0,
     "error":      None,
     "built_at":   None,
 }
 
-# ─────────────────────────────────────────────────────────────
-# KONFIGURASI
-# ─────────────────────────────────────────────────────────────
-
-# Kolom yang digunakan sebagai knowledge base (urutan prioritas)
 KNOWLEDGE_COLS = [
     "Place_Name",
     "City",
@@ -53,7 +46,6 @@ KNOWLEDGE_COLS = [
     "Price_Category",
 ]
 
-# Embedding model (sama dengan yang dipakai vectorizer.py)
 _embeddings = None
 
 def _get_embeddings():
@@ -62,11 +54,6 @@ def _get_embeddings():
     if _embeddings is None:
         _embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
     return _embeddings
-
-
-# ─────────────────────────────────────────────────────────────
-# STEP 1: Format setiap baris dataset ke dokumen teks
-# ─────────────────────────────────────────────────────────────
 
 def _format_row_to_document(row: pd.Series) -> str:
     """
@@ -108,7 +95,6 @@ def build_dataset_text_corpus(csv_path: str) -> Optional[str]:
     """
     try:
         df = pd.read_csv(csv_path)
-        # Ambil hanya kolom yang tersedia
         existing_cols = [c for c in KNOWLEDGE_COLS if c in df.columns]
         df_subset = df[existing_cols].copy()
 
@@ -129,11 +115,6 @@ def build_dataset_text_corpus(csv_path: str) -> Optional[str]:
     except Exception as e:
         print(f"❌ [Dataset Indexer] Gagal membaca CSV: {e}")
         return None
-
-
-# ─────────────────────────────────────────────────────────────
-# STEP 2: Bangun FAISS vector store dari corpus
-# ─────────────────────────────────────────────────────────────
 
 def build_system_vector_store(csv_path: str, max_retries: int = 3):
     """
@@ -157,7 +138,6 @@ def build_system_vector_store(csv_path: str, max_retries: int = 3):
         existing_cols = [c for c in KNOWLEDGE_COLS if c in df.columns]
         df_subset = df[existing_cols].copy()
 
-        # Buat satu dokumen per baris (bukan chunk besar)
         documents = []
         for _, row in df_subset.iterrows():
             doc_text = _format_row_to_document(row)
@@ -182,8 +162,6 @@ def build_system_vector_store(csv_path: str, max_retries: int = 3):
 
         for i in range(0, len(documents), batch_size):
             batch = documents[i:i + batch_size]
-
-            # ── Retry dengan exponential backoff ──
             attempt     = 0
             batch_store = None
             while attempt < max_retries:
@@ -194,11 +172,11 @@ def build_system_vector_store(csv_path: str, max_retries: int = 3):
                     else:
                         batch_store = FAISS.from_texts(batch, embedding=embeddings)
                         vector_store.merge_from(batch_store)
-                    break  # sukses, keluar from retry loop
+                    break
 
                 except Exception as batch_err:
                     attempt += 1
-                    wait_sec = 2 ** attempt  # 2s, 4s, 8s
+                    wait_sec = 2 ** attempt
                     print(f"   [Retry {attempt}/{max_retries}] Batch {i//batch_size+1} gagal: "
                           f"{batch_err}. Menunggu {wait_sec}s...")
                     if attempt < max_retries:
@@ -218,7 +196,6 @@ def build_system_vector_store(csv_path: str, max_retries: int = 3):
         build_status["built_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         print(f"✅ [Dataset Indexer] System vector store berhasil dibuat.")
 
-        # LIM-6: Persist FAISS index ke disk agar survive restart
         try:
             FAISS_SAVE_DIR.mkdir(parents=True, exist_ok=True)
             vector_store.save_local(str(FAISS_SAVE_DIR))

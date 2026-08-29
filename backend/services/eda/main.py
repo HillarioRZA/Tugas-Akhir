@@ -2,6 +2,8 @@ import os
 import pandas as pd
 import numpy as np
 import io
+import matplotlib
+matplotlib.use("Agg")  # Non-interactive backend — no tkinter, thread-safe
 import matplotlib.pyplot as plt
 import seaborn as sns
 from statsmodels.stats.outliers_influence import variance_inflation_factor
@@ -9,10 +11,6 @@ from typing import Optional, Dict, Any, List
 from langchain_core.tools import tool
 from backend.utils.read_csv import _read_csv_with_fallback
 from backend.services.memory import persistent_memory
-
-# generate_custom_plot dihapus — digantikan oleh 5 chart tools
-# di backend/services/visualization/main.py yang lebih lengkap dan
-# terintegrasi langsung dengan dark theme sistem.
 
 def get_eda_tools(session_id: str, context: dict) -> List[Any]:
     def _read_current_csv():
@@ -103,13 +101,11 @@ def get_eda_tools(session_id: str, context: dict) -> List[Any]:
             for col in num_df.columns:
                 series = num_df[col].dropna()
 
-                # Metode IQR
                 Q1, Q3 = series.quantile(0.25), series.quantile(0.75)
                 IQR = Q3 - Q1
                 iqr_mask  = (series < Q1 - 1.5 * IQR) | (series > Q3 + 1.5 * IQR)
                 iqr_count = int(iqr_mask.sum())
 
-                # Metode Z-Score
                 std_val   = series.std()
                 z_scores  = np.abs((series - series.mean()) / std_val) if std_val > 0 else pd.Series(0.0, index=series.index)
                 z_mask    = z_scores > 3
@@ -136,9 +132,8 @@ def get_eda_tools(session_id: str, context: dict) -> List[Any]:
                 "per_column": results,
             }
 
-            # ── Visualisasi Box Plot untuk kolom yang punya outlier ──
             if cols_with_outliers:
-                n_cols = min(len(cols_with_outliers), 4)   # maks 4 kolom per baris
+                n_cols = min(len(cols_with_outliers), 4)
                 fig, axes = plt.subplots(
                     1, n_cols,
                     figsize=(4 * n_cols, 5),
@@ -237,7 +232,6 @@ def get_eda_tools(session_id: str, context: dict) -> List[Any]:
             corr = num_df.corr(method="pearson").round(4)
             corr_dict = corr.to_dict()
 
-            # Pasangan dengan korelasi kuat (|r| >= 0.5)
             strong_pairs = []
             moderate_pairs = []
             for i, col_a in enumerate(corr.columns):
@@ -268,8 +262,8 @@ def get_eda_tools(session_id: str, context: dict) -> List[Any]:
                 "n_numeric_cols":   num_df.shape[1],
                 "columns_analyzed": list(num_df.columns),
                 "correlation_matrix": corr_dict,
-                "strong_correlations":    strong_pairs,    # |r| >= 0.5
-                "moderate_correlations":  moderate_pairs,  # 0.3 <= |r| < 0.5
+                "strong_correlations":    strong_pairs,
+                "moderate_correlations":  moderate_pairs,
                 "insight_summary": (
                     f"Ditemukan {len(strong_pairs)} pasangan fitur dengan korelasi kuat (|r| >= 0.5). "
                     f"{len(moderate_pairs)} pasangan dengan korelasi moderat (|r| 0.3-0.5). "

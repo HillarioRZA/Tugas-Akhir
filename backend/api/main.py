@@ -1,6 +1,6 @@
 import os
 import asyncio
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
@@ -10,14 +10,12 @@ from backend.services.memory.persistent_memory import cleanup_old_sessions
 from backend.services.memory.memory_manager import save_system_vector_store
 from backend.services.rag.dataset_indexer import build_system_vector_store
 
-# Path ke dataset Bali default (v3 — clean & deterministic)
 DEFAULT_DATASET_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "Build_Dataset", "bali_tourist_clean_v3.csv"
 )
 DEFAULT_SESSION_ID = "__default__"
 
-# ── ENV Validation: cek key wajib sebelum server start ──
 _REQUIRED_ENVS = {
     "GOOGLE_API_KEY":     "Diperlukan untuk embedding RAG (GoogleGenerativeAIEmbeddings)",
     "OPENROUTER_API_KEY": "Diperlukan untuk LLM agent dan interpretasi (OpenRouter)",
@@ -29,7 +27,6 @@ def _validate_env() -> list[str]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # ── Core System: Validasi ENV wajib sebelum menerima request ──
     missing_envs = _validate_env()
     if missing_envs:
         print("❌ [Startup] ENV tidak lengkap! Server berjalan tapi fitur berikut akan gagal:")
@@ -38,7 +35,6 @@ async def lifespan(app: FastAPI):
     else:
         print("✅ [Startup] Semua ENV wajib terdeteksi.")
 
-    # ── Startup: Seed dataset default ──
     if os.path.exists(DEFAULT_DATASET_PATH):
         persistent_memory.save_dataset_path(DEFAULT_SESSION_ID, "__latest_csv", DEFAULT_DATASET_PATH)
         print(f"✅ [Startup] Dataset default Bali (v3) berhasil didaftarkan.")
@@ -46,11 +42,9 @@ async def lifespan(app: FastAPI):
     else:
         print(f"⚠️  [Startup] Dataset default tidak ditemukan di: {DEFAULT_DATASET_PATH}")
 
-    # ── Startup: Task 6 — Auto-cleanup session LTM yang sudah > 7 hari ──
     removed = cleanup_old_sessions(max_age_days=7)
     print(f"✅ [Startup] LTM cleanup: {removed} sesi lama dihapus dari memory_db.json")
 
-    # ── Startup: Build system RAG vector store di background ──
     async def _build_rag_in_background():
         """
         LIM-6: Coba muat FAISS dari disk terlebih dahulu (near-instant).
@@ -58,7 +52,6 @@ async def lifespan(app: FastAPI):
         """
         from backend.services.rag.dataset_indexer import load_system_vector_store_from_disk
 
-        # LIM-6: Coba load dari disk terlebih dahulu
         print("🔄 [Startup] Mencoba memuat FAISS index dari disk...")
         vector_store = load_system_vector_store_from_disk()
         if vector_store:
@@ -66,13 +59,12 @@ async def lifespan(app: FastAPI):
             print("✅ [Startup] System RAG vector store dimuat dari disk (near-instant).")
             return
 
-        # Fallback: build dari API embedding
         print("🔄 [Startup] Tidak ada cache disk. Memulai indexing dataset ke RAG vector store...")
         print("   (Proses berjalan di background, server sudah siap menerima request)")
         try:
             loop = asyncio.get_event_loop()
             vector_store = await loop.run_in_executor(
-                None,  # Default thread pool
+                None,
                 build_system_vector_store,
                 DEFAULT_DATASET_PATH
             )
@@ -87,7 +79,6 @@ async def lifespan(app: FastAPI):
     asyncio.create_task(_build_rag_in_background())
 
     yield
-    # ── Shutdown ──
     print("🔌 [Shutdown] Server berhenti.")
 
 app = FastAPI(
@@ -101,11 +92,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(agent_router.router)
-
-# ───────────────────────────────────────────────────────────
-# GLOBAL EXCEPTION HANDLERS
-# Mengganti Python traceback mentah → JSON bersih
-# ───────────────────────────────────────────────────────────
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -130,10 +116,6 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "detail": exc.errors(),
         }
     )
-
-# ───────────────────────────────────────────────────────────
-# ENDPOINTS
-# ───────────────────────────────────────────────────────────
 
 @app.get("/", summary="Root", tags=["System"])
 def read_root():
@@ -231,4 +213,102 @@ def rag_evaluate(k: int = 5):
 
     result = evaluate_rag_retrieval(vector_store=vector_store, k=k)
     return result
-
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# WebSocket endpoint — real-time streaming agent
+# ──────────────────────────────────────────────────────────────────────────────
+
+@app.websocket("/ws/chat")
+async def ws_chat(websocket: WebSocket):
+    """
+    WebSocket endpoint untuk streaming output agent WISTA secara real-time.
+
+    Protokol (client → server):
+        JSON: {
+            "prompt":       "<teks pertanyaan pengguna>",          # wajib
+            "session_id":   "<session id>",                        # opsional, auto-generate jika kosong
+            "file_path":    "<path file CSV/PDF di server>",       # opsional
+            "dataset_name": "<nama file, misal 'data.csv'>",       # opsional
+        }
+
+    Protokol (server → client) — setiap event adalah JSON terpisah:
+        {"type": "token",      "content": "<teks token LLM>"}
+        {"type": "tool_start", "tool": "<nama>",  "input": {...}}
+        {"type": "tool_end",   "tool": "<nama>",  "output": "<ringkasan>"}
+        {"type": "image",      "data": "<base64>","format": "png"}
+        {"type": "done",       "summary": "...",  "reasoning_log": [...], "session_id": "..."}
+        {"type": "error",      "detail": "<pesan kesalahan>"}
+    """
+    import uuid as _uuid
+    from backend.services.agent.main import run_agent_flow_streaming
+
+    await websocket.accept()
+    print("🔌 [WS] Client terhubung.")
+
+    try:
+        while True:
+            # Tunggu pesan dari client
+            try:
+                raw = await websocket.receive_text()
+            except WebSocketDisconnect:
+                raise  # biarkan handler luar menangkap
+            except Exception as recv_err:
+                print(f"⚠️  [WS] Gagal menerima pesan: {recv_err}")
+                break
+
+            # Skip frame kosong (ping/pong/close frame dari Postman)
+            if not raw or not raw.strip():
+                continue
+
+            try:
+                payload = __import__("json").loads(raw)
+            except Exception:
+                await websocket.send_json({
+                    "type":   "error",
+                    "detail": "Pesan harus berformat JSON valid.",
+                })
+                continue
+
+            prompt = payload.get("prompt", "").strip()
+            if not prompt:
+                await websocket.send_json({
+                    "type":   "error",
+                    "detail": "Field 'prompt' wajib diisi dan tidak boleh kosong.",
+                })
+                continue
+
+            session_id   = payload.get("session_id") or str(_uuid.uuid4())
+            file_path    = payload.get("file_path")
+            dataset_name = payload.get("dataset_name")
+
+            print(f"🔌 [WS] SESSION={session_id} | PROMPT={prompt[:80]}...")
+
+            # Streaming: kirim setiap event langsung ke client
+            async for event in run_agent_flow_streaming(
+                session_id=session_id,
+                prompt=prompt,
+                new_file_path=file_path,
+                new_dataset_name=dataset_name,
+            ):
+                try:
+                    await websocket.send_json(event)
+                except Exception as send_err:
+                    # Jika event tertentu gagal di-serialize, log dan lanjutkan
+                    print(f"⚠️  [WS] Gagal kirim event '{event.get('type','?')}': {send_err}")
+                    try:
+                        await websocket.send_json({
+                            "type":   "error",
+                            "detail": f"Gagal mengirim event: {send_err}",
+                        })
+                    except Exception:
+                        pass
+
+    except WebSocketDisconnect:
+        print("🔌 [WS] Client terputus.")
+    except Exception as e:
+        print(f"❌ [WS] Error tidak terduga: {e}")
+        try:
+            await websocket.send_json({"type": "error", "detail": str(e)})
+        except Exception:
+            pass

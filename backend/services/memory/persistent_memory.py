@@ -8,10 +8,9 @@ from typing import Dict, Any, Optional
 from langchain.memory import ConversationBufferWindowMemory
 from langchain.schema import messages_from_dict, messages_to_dict
 
-# Fix C5: gunakan path absolut agar TinyDB tidak bergantung pada cwd saat server dijalankan
-_MEMORY_DIR  = Path(__file__).parent          # .../backend/services/memory/
-_PROJECT_ROOT = _MEMORY_DIR.parents[2]        # .../Data_Whisperer_v1.0/
-_DB_PATH     = _MEMORY_DIR / "memory_db.json"  # absolut, selalu di folder memory/
+_MEMORY_DIR  = Path(__file__).parent          
+_PROJECT_ROOT = _MEMORY_DIR.parents[2]        
+_DB_PATH     = _MEMORY_DIR / "memory_db.json"  
 
 db = TinyDB(str(_DB_PATH))
 Q = Query()
@@ -79,7 +78,6 @@ def load_chat_history(session_id: str) -> ConversationBufferWindowMemory:
     Task 6: Menggunakan ConversationBufferWindowMemory(k=10) — hanya 10 exchange terakhir
     yang dimuat ke konteks aktif, mencegah context window overflow pada sesi panjang.
     """
-    # Task 6: window k=10 — hanya 10 pertukaran terakhir masuk ke context LLM
     memory = ConversationBufferWindowMemory(
         k=10,
         memory_key="chat_history",
@@ -91,8 +89,6 @@ def load_chat_history(session_id: str) -> ConversationBufferWindowMemory:
     if data and data.get('messages'):
         try:
             messages = messages_from_dict(data['messages'])
-            # WindowMemory tetap muat semua pesan dari LTM, tapi saat inference
-            # hanya k=10 terakhir yang dikirim ke LLM
             memory.chat_memory.messages = messages
             print(f"--- [LTM] Riwayat Chat dimuat dari DB untuk sesi {session_id} "
                   f"({len(messages)} pesan, window k=10) ---")
@@ -122,7 +118,6 @@ def cleanup_old_sessions(max_age_days: int = 7) -> int:
     for record in all_sessions:
         updated_at_str = record.get("updated_at")
         if not updated_at_str:
-            # Session lama (sebelum Task 6) tidak punya timestamp — skip aman
             continue
 
         try:
@@ -134,7 +129,7 @@ def cleanup_old_sessions(max_age_days: int = 7) -> int:
                       f"(tidak aktif sejak {updated_at_str[:10]}) ---")
                 removed_count += 1
         except (ValueError, TypeError):
-            continue  # Skip record dengan timestamp rusak
+            continue
 
     if removed_count:
         print(f"✅ [LTM] Cleanup selesai: {removed_count} sesi lama dihapus.")
@@ -151,7 +146,6 @@ def clear_all_memory_for_session(session_id: str):
     chat_history.remove(Q.session_id == session_id)
     print(f"--- [LTM] Data TinyDB untuk sesi {session_id} dihapus ---")
 
-    # Fix C5: pakai path absolut untuk folder model dan upload
     session_model_dir  = str(_PROJECT_ROOT / "saved_models" / session_id)
     session_upload_dir = str(_PROJECT_ROOT / "user_uploads"  / session_id)
 

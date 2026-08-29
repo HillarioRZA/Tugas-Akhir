@@ -70,7 +70,7 @@ async def execute_agent_action(
                 new_file_path,
                 new_dataset_name,
             ),
-            timeout=120.0  # ARCH-1 fix: 120 detik global timeout
+            timeout=120.0
         )
     except asyncio.TimeoutError:
         return JSONResponse(
@@ -91,9 +91,3 @@ async def execute_agent_action(
     final_response = result
     final_response["session_id"] = session_id
     return JSONResponse(content=final_response)
-
-# Endpoint /custom-visualize dihapus (BUG-1 fix).
-# generate_custom_plot sudah tidak tersedia di eda/main.py.
-# Gunakan 5 visualization tools via Agent: plot_itinerary_scatter,
-# plot_distribution_histogram, plot_category_bar, plot_correlation_heatmap,
-# plot_budget_breakdown.

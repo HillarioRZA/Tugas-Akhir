@@ -1,4 +1,3 @@
-# backend/testing/__init__.py
 """
 WISTA AI Agent - Testing Framework
 ====================================
