@@ -1,4 +1,0 @@
-conda activate data_whisperer
-uvicorn backend.api.main:app --reload  
-
-npm run dev
