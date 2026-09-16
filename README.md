@@ -5,10 +5,10 @@
   <img src="https://img.shields.io/badge/python-3.10+-blue?logo=python&logoColor=white" alt="Python"/>
   <img src="https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white" alt="React"/>
   <img src="https://img.shields.io/badge/FastAPI-0.104+-009688?logo=fastapi&logoColor=white" alt="FastAPI"/>
-  <img src="https://img.shields.io/badge/LLM-Gemini_2.5_Flash-4285F4?logo=google&logoColor=white" alt="Gemini"/>
+  <img src="https://img.shields.io/badge/LLM-Multi--LLM_Agnostic-4285F4?logo=google&logoColor=white" alt="Multi-LLM"/>
   <img src="https://img.shields.io/badge/LangChain-ReAct_Agent-1C3C3C?logo=langchain&logoColor=white" alt="LangChain"/>
   <img src="https://img.shields.io/badge/License-Academic-orange" alt="License"/>
-  <img src="https://img.shields.io/badge/Tests-11%2F11_Passed_(100%25)-brightgreen" alt="Tests"/>
+  <img src="https://img.shields.io/badge/Tests-16%2F16_Passed_(100%25)-brightgreen" alt="Tests"/>
 </p>
 
 ---
@@ -275,7 +275,7 @@ Data_Whisperer_v1.0/
 
 ```bash
 git clone <repository-url>
-cd Data_Whisperer_v1.0
+cd project_ta
 ```
 
 ### 2. Setup Backend (Python)
@@ -636,29 +636,39 @@ $$\text{Score}_{new} = \text{Score}_{AHP} - 0.15$$
 
 ## 🧪 Testing Framework
 
-### Desain 11 Skenario × 3 Dimensi
+### Desain 16 Skenario Benchmark × 3 Dimensi Evaluasi
 
-| ID | Skenario | Kategori | Dataset |
+Evaluasi empiris sistem dievaluasi secara kuantitatif melalui pembobotan multi-dimensi:
+$$\text{Final Score} = 0.40 \times D_1 + 0.35 \times D_2 + 0.25 \times D_3$$
+
+| ID | Skenario | Kategori | Sequence Tool Utama |
 |:---:|:---|:---|:---|
-| S01 | Prescriptive Core Travel | Optimizer | `bali_destinations.csv` |
-| S02 | Tight Budget Travel | Optimizer | `bali_destinations.csv` |
-| S03 | Logical Pushback | Boundary | — |
-| S04 | Explainable AI + ML | ML & XAI | `bali_destinations.csv` |
-| S05 | Multi-Criteria EDA | EDA | `bali_destinations.csv` |
-| S06 | Guardrail: Coding Refusal | Guardrail | — |
-| S07 | Guardrail: Non-Bali Geography | Guardrail | — |
-| S08 | EDA Full Profile | EDA | `bali_destinations.csv` |
-| S09 | Predictive Match Score | ML | `bali_destinations.csv` |
-| S10 | Multi-Dataset HR Analytics | EDA | `hr_analytics.csv` |
-| S11 | RAG PDF Document Q&A | RAG | `bps_pariwisata_bali.pdf` |
+| **S01** | Prescriptive Core Travel Optimization | Optimizer | `budget_optimizer_tool` $\rightarrow$ `plot_budget_breakdown` $\rightarrow$ `verify_output` |
+| **S02** | Neuro-Symbolic Multi-Tool Chaining | Semantic Chaining | `rag_semantic_filter` $\rightarrow$ `budget_optimizer_tool` $\rightarrow$ `plot_budget_breakdown` $\rightarrow$ `verify_output` |
+| **S03** | Reasoning & Boundary Validation | Logical Pushback | `budget_optimizer_tool` $\rightarrow$ `verify_output` (Pagu Mustahil) |
+| **S04** | Explainable AI (XAI) & Scatter Plot | XAI & Visual Analytics | `budget_optimizer_tool` $\rightarrow$ `plot_itinerary_scatter` $\rightarrow$ `verify_output` |
+| **S05** | Multi-Criteria Filtered Data Query | Multi-Filter Query | `run_full_profile` $\rightarrow$ `rag_semantic_filter` $\rightarrow$ `budget_optimizer_tool` $\rightarrow$ `verify_output` |
+| **S06** | Guardrail Keamanan Domain | Domain Safety | Nol Tool Call (Penolakan Sintaks Coding Langsung) |
+| **S07** | Guardrail Geografis Wilayah | Boundary Defense | Nol Tool Call (Penolakan Wilayah Luar Bali / Jakarta) |
+| **S08** | Automated EDA Full Profile | Autonomous Profiling | `run_full_profile` $\rightarrow$ `verify_output` |
+| **S09** | Machine Learning Match Score | ML Inference & XAI | `predict_match_score` $\rightarrow$ `verify_output` |
+| **S10** | Cross-Domain Generalization | Generalizability Test | `run_full_profile` $\rightarrow$ `detect_outliers` $\rightarrow$ `get_correlation_matrix` $\rightarrow$ `verify_output` |
+| **S11** | Document Intelligence Q&A | Unstructured RAG | `index_pdf` $\rightarrow$ `rag_semantic_filter` $\rightarrow$ `verify_output` |
+| **S12** | Multi-Turn Dynamic Re-Planning | Stateful Memory & Pareto | `rag_semantic_filter` $\rightarrow$ `budget_optimizer_tool` $\rightarrow$ `verify_output` |
+| **S13** | Adversarial Jailbreak Defense | Cybersecurity | Nol Tool Call (Penolakan Rekayasa Prompt DAN) |
+| **S14** | Extreme Luxury Budget Upper-Bound | Upper-Bound Stress Test | `rag_semantic_filter` $\rightarrow$ `budget_optimizer_tool` $\rightarrow$ `plot_budget_breakdown` $\rightarrow$ `verify_output` |
+| **S16** | Incomplete & Ambiguous Query Dialogue | Mixed-Initiative Dialogue | Nol Tool Call (3 Pertanyaan Klarifikasi Proaktif) |
+| **S17** | Cross-Regency Transit Fatigue | Spatial Intelligence | `budget_optimizer_tool` (Gabungan) $\rightarrow$ `budget_optimizer_tool` (3 Zona Mandiri) $\rightarrow$ `verify_output` |
+
+*Catatan:* Skenario S15 (*Malformed / Dirty CSV Handling*) dialokasikan sebagai agenda riset lanjutan.
 
 ### 3 Dimensi Evaluasi
 
-| Dimensi | Singkatan | Fokus |
+| Dimensi | Bobot | Fokus Penilaian |
 |:---|:---:|:---|
-| Deterministic Engine | D1 | Ketepatan komputasi matematis |
-| Constraint & Boundary | D2 | Ketahanan terhadap input ekstrem |
-| Guardrails & Integrity | D3 | Kepatuhan domain dan integritas CoV |
+| **D1: Tool Selection Accuracy** | 40% | Ketepatan memilih fungsi yang diharapkan & menghindari tool terlarang |
+| **D2: Argument & Constraint Extraction** | 35% | Akurasi translasi bahasa alami ke parameter terstruktur |
+| **D3: Response Integrity & Anti-Hallucination** | 25% | Kepatuhan matematis anggaran $\sum c_i \le B$, audit CoV, dan ketiadaan inventori fiktif |
 
 ### Menjalankan Tests
 
@@ -677,12 +687,12 @@ python -m backend.testing.ws_test
 
 ```
 ===========================================================================
-  RINGKASAN EVALUASI AI DATA SCIENTIST (11 SKENARIO)
+  RINGKASAN EVALUASI BENCHMARK SISTEM (16 SKENARIO)
 ===========================================================================
   SUCCESS RATE : 100.0%
-  Rata-rata    : 98.6%
-  Lulus / Gagal: 11 / 0
-  Target       : >= 90% → ✅ TERCAPAI
+  Rata-rata 3D : 100.0 / 100.0 (Grade A)
+  Lulus / Gagal: 16 / 0
+  Target       : >= 90% → ✅ TERCAPAI SEMPURNA
 ===========================================================================
 ```
 
