@@ -800,9 +800,3 @@ Institut Sains dan Teknologi Terpadu Surabaya (ISTTS)
 - Prof. Dr. Ir. Esther Irawati Setiawan, S.Kom, M.Kom (Co-Pembimbing)
 
 ---
-
-<p align="center">
-  <sub>Built with ❤️ using Neuro-Symbolic AI Architecture</sub>
-  <br>
-  <sub>© 2026 Reza Pratama Tandjung — Institut Sains dan Teknologi Terpadu Surabaya</sub>
-</p>
